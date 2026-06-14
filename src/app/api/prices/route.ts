@@ -1,17 +1,15 @@
-/**
- * GET /api/prices
- *
- * Bulk index price endpoint. Every external Steam fetch has a 5 s timeout.
- * On failure the per-skin result is marked failed and the index falls back to
- * the last good in-memory cached value. The route itself never throws a 500.
- *
- * Console audit on every non-cached call shows per-skin price, source field,
- * and whether the final index value came from cache.
- */
-
 import { NextResponse } from 'next/server';
+import {
+  BulkIndexPrices,
+  getPriceCache,
+  setPriceCache,
+} from '@/lib/priceCache';
 
-export const dynamic = 'force-dynamic';
+// Re-export so skinPriceService can import the type from here
+export type { BulkIndexPrices };
+
+export const dynamic    = 'force-dynamic';
+export const maxDuration = 10; // Vercel cap: abort if Steam is totally unresponsive
 
 const FETCH_TIMEOUT_MS = 5_000;
 const CACHE_TTL        = 30_000;
@@ -58,15 +56,6 @@ const INDEX_SKINS: Record<string, string[]> = {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface BulkIndexPrices {
-  awp:       number;
-  ak47:      number;
-  knife:     number;
-  glove:     number;
-  cs500:     number;
-  updatedAt: number;
-}
-
 interface SkinResult {
   hashName: string;
   price:    number | null;
@@ -81,15 +70,15 @@ interface SteamPriceOverview {
   median_price?: string;
 }
 
-// ── In-memory cache ───────────────────────────────────────────────────────────
-
-let serverCache: { data: BulkIndexPrices; ts: number } | null = null;
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function parseUSD(s: string | null | undefined): number {
   if (!s) return 0;
   return parseFloat(s.replace(/[^\d.]/g, '')) || 0;
+}
+
+function fail(hashName: string, error: string): SkinResult {
+  return { hashName, price: null, field: null, source: 'failed', error };
 }
 
 // ── Steam fetch with 5 s timeout ──────────────────────────────────────────────
@@ -105,10 +94,10 @@ async function fetchSteamPrice(hashName: string): Promise<SkinResult> {
 
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        Accept: 'application/json, text/plain, */*',
+        'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept':          'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
-        Referer: 'https://steamcommunity.com/market/',
+        'Referer':         'https://steamcommunity.com/market/',
       },
       signal: ac.signal,
       next: { revalidate: 60 },
@@ -133,10 +122,6 @@ async function fetchSteamPrice(hashName: string): Promise<SkinResult> {
     const msg = (err as Error).name === 'AbortError' ? 'steam_timeout_5s' : (err as Error).message;
     return fail(hashName, msg);
   }
-}
-
-function fail(hashName: string, error: string): SkinResult {
-  return { hashName, price: null, field: null, source: 'failed', error };
 }
 
 // ── Index computation ─────────────────────────────────────────────────────────
@@ -175,8 +160,10 @@ function printAudit(indexId: string, results: SkinResult[], finalPrice: number, 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function GET() {
-  if (serverCache && Date.now() - serverCache.ts < CACHE_TTL) {
-    return NextResponse.json(serverCache.data);
+  const cached = getPriceCache();
+  // Return from shared cache if fresh — /api/price/[index] benefits from this too
+  if (cached && Date.now() - cached.updatedAt < CACHE_TTL) {
+    return NextResponse.json(cached);
   }
 
   try {
@@ -190,7 +177,7 @@ export async function GET() {
       computeIndex('cs500-index'),
     ]);
 
-    const prev = serverCache?.data;
+    const prev = cached;
 
     const awp   = awpR.price   > 0 ? awpR.price   : (prev?.awp   ?? 0);
     const ak47  = ak47R.price  > 0 ? ak47R.price  : (prev?.ak47  ?? 0);
@@ -207,17 +194,16 @@ export async function GET() {
 
     const data: BulkIndexPrices = { awp, ak47, knife, glove, cs500, updatedAt: Date.now() };
     if (awp > 0 || ak47 > 0 || knife > 0 || glove > 0 || cs500 > 0) {
-      serverCache = { data, ts: Date.now() };
+      setPriceCache(data);
     }
 
     return NextResponse.json(data);
 
   } catch (err) {
-    // Unexpected error — log it and return stale cache rather than 500
     console.error('[PRICES] Unexpected error in GET handler:', (err as Error).message, err);
-    if (serverCache) {
+    if (cached) {
       console.warn('[PRICES] Returning stale cache after unexpected error');
-      return NextResponse.json(serverCache.data);
+      return NextResponse.json(cached);
     }
     const empty: BulkIndexPrices = { awp: 0, ak47: 0, knife: 0, glove: 0, cs500: 0, updatedAt: Date.now() };
     return NextResponse.json(empty);

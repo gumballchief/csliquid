@@ -1,93 +1,60 @@
 /**
  * GET /api/price/[index]
  *
- * Proxy to the oracle service (ORACLE_URL env var). On Vercel the oracle is
- * not co-located, so every request goes through the fallback chain:
+ * Returns a single index price synchronously from the shared in-memory cache
+ * populated by /api/prices. Makes zero external API calls — responds in <1 ms.
  *
- *   1. Oracle (4 s timeout)
- *   2. Module-level in-memory cache (survives warm lambda re-use)
- *   3. Hardcoded baseline prices (always responds, never 503)
- *
- * The response shape is compatible with /api/index-price and what
- * skinPriceService expects: { price, volume, source, ... }.
+ * Fallback chain (all synchronous):
+ *   1. Shared priceCache (written by /api/prices, shared within the same lambda)
+ *   2. Hardcoded baseline prices — always returns 200, never hangs
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { INDEX_DEFINITIONS } from '@/lib/indexes';
+import { getPriceCache, INDEX_KEY, FALLBACK_PRICES } from '@/lib/priceCache';
 
-export const dynamic = 'force-dynamic';
-
-const ORACLE_URL       = process.env.ORACLE_URL ?? 'http://localhost:3001';
-const FETCH_TIMEOUT_MS = 4_000;
-
-// Reasonable baseline prices (USD) — static-weight VWAP estimates as of mid-2025.
-// Used only when the oracle is unreachable AND no warm-lambda cache exists.
-const FALLBACK_PRICES: Record<string, number> = {
-  'awp-index':    55,
-  'ak47-index':   12,
-  'knife-index': 480,
-  'glove-index': 280,
-  'cs500-index':  65,
-};
-
-// Module-level: persists across requests within the same warm lambda instance.
-interface CachedOraclePrice { body: unknown; ts: number }
-const oracleCache = new Map<string, CachedOraclePrice>();
+export const dynamic     = 'force-dynamic';
+export const maxDuration = 5; // hard cap — this route should respond in <1 ms
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: { index: string } },
 ) {
   const indexId = params.index;
+  const def     = INDEX_DEFINITIONS[indexId];
 
-  if (!INDEX_DEFINITIONS[indexId]) {
+  if (!def) {
     return NextResponse.json({ error: `Unknown index: ${indexId}` }, { status: 400 });
   }
 
-  // ── 1. Try oracle with 4 s hard timeout ────────────────────────────────────
-  const ac    = new AbortController();
-  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+  // ── 1. Read from shared cache (zero latency) ──────────────────────────────
+  const cacheKey = INDEX_KEY[indexId];
+  const cached   = getPriceCache();
 
-  try {
-    const oracleRes = await fetch(
-      `${ORACLE_URL}/api/price/${encodeURIComponent(indexId)}`,
-      { headers: { Accept: 'application/json' }, signal: ac.signal },
-    );
-    clearTimeout(timer);
-
-    const body = await oracleRes.json();
-
-    if (oracleRes.ok) {
-      oracleCache.set(indexId, { body, ts: Date.now() });
-      return NextResponse.json(body);
+  if (cached && cacheKey) {
+    const price = cached[cacheKey];
+    if (price > 0) {
+      return NextResponse.json({
+        indexId,
+        name:      def.name,
+        price,
+        volume:    0,
+        source:    'cache',
+        fetchedAt: cached.updatedAt,
+      });
     }
-
-    // Oracle returned a non-200 — fall through to cache / fallback
-    console.error(`[price/${indexId}] Oracle returned ${oracleRes.status}`);
-
-  } catch (err) {
-    clearTimeout(timer);
-    const msg = (err as Error).name === 'AbortError' ? 'oracle_timeout_4s' : (err as Error).message;
-    console.error(`[price/${indexId}] Oracle fetch failed: ${msg}`);
   }
 
-  // ── 2. Return stale lambda-local cache if available ────────────────────────
-  const stale = oracleCache.get(indexId);
-  if (stale) {
-    console.warn(`[price/${indexId}] Returning stale oracle cache (age ${Math.round((Date.now() - stale.ts) / 1000)}s)`);
-    return NextResponse.json(stale.body);
-  }
-
-  // ── 3. Hardcoded baseline — always responds, never kills the Vercel function
+  // ── 2. Hardcoded baseline — cold lambda, /api/prices not yet called ────────
   const fallbackPrice = FALLBACK_PRICES[indexId] ?? 50;
-  console.warn(`[price/${indexId}] Using hardcoded fallback price: $${fallbackPrice}`);
+  console.warn(`[price/${indexId}] Cache empty — using hardcoded fallback $${fallbackPrice}`);
 
   return NextResponse.json({
     indexId,
-    name:       INDEX_DEFINITIONS[indexId].name,
-    price:      fallbackPrice,
-    volume:     0,
-    source:     'fallback',
-    fetchedAt:  Date.now(),
+    name:      def.name,
+    price:     fallbackPrice,
+    volume:    0,
+    source:    'fallback',
+    fetchedAt: Date.now(),
   });
 }
