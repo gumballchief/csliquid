@@ -12,9 +12,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { INDEX_DEFINITIONS } from '@/lib/indexes';
 
-const ORACLE_URL = process.env.ORACLE_URL ?? 'http://localhost:3001';
+const ORACLE_URL       = process.env.ORACLE_URL ?? 'http://localhost:3001';
+const FETCH_TIMEOUT_MS = 5_000;
 
 export const dynamic = 'force-dynamic'; // always proxy live; oracle owns caching
+
+// Module-level fallback cache so a dead oracle returns last good value
+interface CachedOraclePrice { body: unknown; ts: number }
+const oracleCache = new Map<string, CachedOraclePrice>();
 
 export async function GET(
   _req: NextRequest,
@@ -29,18 +34,37 @@ export async function GET(
     );
   }
 
+  const ac    = new AbortController();
+  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+
   try {
     const oracleRes = await fetch(
       `${ORACLE_URL}/api/price/${encodeURIComponent(indexId)}`,
-      { headers: { Accept: 'application/json' } },
+      { headers: { Accept: 'application/json' }, signal: ac.signal },
     );
+    clearTimeout(timer);
 
     const body = await oracleRes.json();
 
+    if (oracleRes.ok) {
+      oracleCache.set(indexId, { body, ts: Date.now() });
+    }
+
     return NextResponse.json(body, { status: oracleRes.status });
+
   } catch (err) {
+    clearTimeout(timer);
+    const msg = (err as Error).name === 'AbortError' ? 'oracle_timeout_5s' : (err as Error).message;
+    console.error(`[price/${indexId}] Oracle fetch failed:`, msg);
+
+    const stale = oracleCache.get(indexId);
+    if (stale) {
+      console.warn(`[price/${indexId}] Returning stale oracle cache`);
+      return NextResponse.json(stale.body);
+    }
+
     return NextResponse.json(
-      { error: 'Oracle service unavailable', detail: (err as Error).message },
+      { error: 'Oracle service unavailable', detail: msg },
       { status: 503 },
     );
   }

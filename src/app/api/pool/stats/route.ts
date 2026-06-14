@@ -24,11 +24,27 @@ const dummyWallet = {
 const provider = new AnchorProvider(connection, dummyWallet as any, { commitment: COMMITMENT });
 const program  = new Program(rawIdl as unknown as Idl, provider);
 
+const RPC_TIMEOUT_MS = 5_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label}_timeout_${ms}ms`)), ms),
+    ),
+  ]);
+}
+
 export async function GET(): Promise<NextResponse> {
   try {
     const poolPda = findLiquidityPoolPda();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = await (program.account as any).liquidityPool.fetchNullable(poolPda) as Record<string, unknown> | null;
+    const raw = await withTimeout(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (program.account as any).liquidityPool.fetchNullable(poolPda) as Promise<Record<string, unknown> | null>,
+      RPC_TIMEOUT_MS,
+      'solana_rpc',
+    ) as Record<string, unknown> | null;
 
     if (!raw) {
       return NextResponse.json({ initialized: false });
