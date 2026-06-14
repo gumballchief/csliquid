@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background -->
+  <rect width="32" height="32" fill="#000000"/>
+
+  <!-- Row 1: "CS" in orange (#FF6B00) — dominant brand mark -->
+  <text
+    x="1"
+    y="17"
+    font-family="Arial Black, Arial, sans-serif"
+    font-weight="900"
+    font-size="16"
+    fill="#FF6B00"
+    letter-spacing="-1">CS</text>
+
+  <!-- Row 2: knife (=L) + IQUID in white -->
+
+  <!-- Knife blade — thin upward-pointing triangle -->
+  <polygon points="1.5,19.5 3,29 0,29" fill="#FFFFFF"/>
+  <!-- Knife crossguard -->
+  <rect x="-0.3" y="29" width="3.8" height="0.9" fill="#999999"/>
+  <!-- Knife handle -->
+  <rect x="0.5" y="29.9" width="2.2" height="2" rx="0.3" fill="#555555"/>
+
+  <!-- IQUID text following the knife -->
+  <text
+    x="4.2"
+    y="30.5"
+    font-family="Arial Black, Arial, sans-serif"
+    font-weight="900"
+    font-size="8"
+    fill="#FFFFFF"
+    letter-spacing="-0.3">IQUID</text>
+</svg>

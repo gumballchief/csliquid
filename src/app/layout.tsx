@@ -22,8 +22,13 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'CSLIQUID — CS2 Perpetual Futures on Solana',
-  description: 'Trade perpetual futures on CS2 skins. Powered by Solana.',
+  title: 'CSLIQUID',
+  description: 'CS2 Skin Perpetual Futures on Solana',
+  icons: {
+    icon:     '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple:    '/favicon.svg',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
