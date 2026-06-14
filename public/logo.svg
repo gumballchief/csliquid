@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 44" width="168" height="44">
+  <!-- CS in blue -->
+  <text x="2" y="30"
+    font-family="'Arial Black','Haettenschweiler','Impact','Franklin Gothic Heavy',sans-serif"
+    font-size="30" font-weight="900" letter-spacing="-1"
+    fill="#00AAFF">CS</text>
+  <!-- LIQUID in white -->
+  <text x="40" y="30"
+    font-family="'Arial Black','Haettenschweiler','Impact','Franklin Gothic Heavy',sans-serif"
+    font-size="30" font-weight="900" letter-spacing="-1"
+    fill="#FFFFFF">LIQUID</text>
+
+  <!-- Drip 1 — under C, short -->
+  <path d="M7,32 L11,32 Q11,37 9,41 Q7,37 7,32 Z" fill="#00AAFF" opacity="0.85"/>
+  <!-- Drip 2 — under S, tallest -->
+  <path d="M24,31 L28,31 Q28,37 26,43 Q24,37 24,31 Z" fill="#00AAFF"/>
+  <!-- Drip 3 — between CS/LIQUID seam, medium -->
+  <path d="M33,32 L37,32 Q37,38 35,42 Q33,38 33,32 Z" fill="#00AAFF" opacity="0.7"/>
+</svg>

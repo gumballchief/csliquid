@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400">
+  <defs>
+    <!-- Blue radial glow behind logo -->
+    <radialGradient id="logoGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"   stop-color="#0055CC" stop-opacity="0.45"/>
+      <stop offset="60%"  stop-color="#002266" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#000033" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Subtle top highlight -->
+    <linearGradient id="topSheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#00AAFF" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#00AAFF" stop-opacity="0"/>
+    </linearGradient>
+    <!-- Clip for the whole banner -->
+    <clipPath id="bannerClip">
+      <rect width="1200" height="400"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="400" fill="#07080f"/>
+
+  <!-- Top sheen gradient -->
+  <rect width="1200" height="200" fill="url(#topSheen)"/>
+
+  <!-- ── Crosshair watermark ── centered at 600,195 -->
+  <g clip-path="url(#bannerClip)" opacity="1">
+    <!-- Outer circle -->
+    <circle cx="600" cy="195" r="180" fill="none" stroke="#1a3a6e" stroke-width="0.8" opacity="0.18"/>
+    <!-- Middle circle -->
+    <circle cx="600" cy="195" r="110" fill="none" stroke="#1a4a8e" stroke-width="0.8" opacity="0.22"/>
+    <!-- Inner circle -->
+    <circle cx="600" cy="195" r="55"  fill="none" stroke="#1a5aae" stroke-width="1"   opacity="0.28"/>
+    <!-- Center dot -->
+    <circle cx="600" cy="195" r="3"   fill="#00AAFF" opacity="0.15"/>
+
+    <!-- Crosshair lines — horizontal -->
+    <line x1="50"  y1="195" x2="520" y2="195" stroke="#1a4a8e" stroke-width="0.7" opacity="0.2"/>
+    <line x1="680" y1="195" x2="1150" y2="195" stroke="#1a4a8e" stroke-width="0.7" opacity="0.2"/>
+    <!-- Crosshair lines — vertical -->
+    <line x1="600" y1="10"  x2="600" y2="120" stroke="#1a4a8e" stroke-width="0.7" opacity="0.2"/>
+    <line x1="600" y1="270" x2="600" y2="390" stroke="#1a4a8e" stroke-width="0.7" opacity="0.2"/>
+
+    <!-- Crosshair tick marks at 45° -->
+    <line x1="527" y1="122" x2="545" y2="140" stroke="#1a4a8e" stroke-width="0.6" opacity="0.14"/>
+    <line x1="673" y1="122" x2="655" y2="140" stroke="#1a4a8e" stroke-width="0.6" opacity="0.14"/>
+    <line x1="527" y1="268" x2="545" y2="250" stroke="#1a4a8e" stroke-width="0.6" opacity="0.14"/>
+    <line x1="673" y1="268" x2="655" y2="250" stroke="#1a4a8e" stroke-width="0.6" opacity="0.14"/>
+
+    <!-- Corner bracket accents (top-left) -->
+    <path d="M 80,30 L 80,80 M 80,30 L 130,30" fill="none" stroke="#00AAFF" stroke-width="1.5" opacity="0.12"/>
+    <!-- Corner bracket accents (top-right) -->
+    <path d="M 1120,30 L 1120,80 M 1120,30 L 1070,30" fill="none" stroke="#00AAFF" stroke-width="1.5" opacity="0.12"/>
+    <!-- Corner bracket accents (bottom-left) -->
+    <path d="M 80,370 L 80,320 M 80,370 L 130,370" fill="none" stroke="#00AAFF" stroke-width="1.5" opacity="0.12"/>
+    <!-- Corner bracket accents (bottom-right) -->
+    <path d="M 1120,370 L 1120,320 M 1120,370 L 1070,370" fill="none" stroke="#00AAFF" stroke-width="1.5" opacity="0.12"/>
+  </g>
+
+  <!-- Blue glow ellipse behind the logo -->
+  <ellipse cx="600" cy="175" rx="380" ry="160" fill="url(#logoGlow)"/>
+
+  <!-- ── Main logo text ── -->
+  <!-- "CS" in blue -->
+  <text text-anchor="end" x="600" y="220"
+    font-family="'Arial Black','Haettenschweiler','Impact','Franklin Gothic Heavy',sans-serif"
+    font-size="96" font-weight="900" letter-spacing="-3"
+    fill="#00AAFF">CS</text>
+  <!-- "LIQUID" in white -->
+  <text text-anchor="start" x="606" y="220"
+    font-family="'Arial Black','Haettenschweiler','Impact','Franklin Gothic Heavy',sans-serif"
+    font-size="96" font-weight="900" letter-spacing="-3"
+    fill="#FFFFFF">LIQUID</text>
+
+  <!-- Liquid drips below the "CS" text -->
+  <!-- These hang just below the CS baseline. CS ends around x=600, is ~180px wide so starts ~420 -->
+  <!-- Drip A: under C -->
+  <path d="M457,226 L465,226 Q465,240 461,252 Q457,240 457,226 Z" fill="#00AAFF" opacity="0.75"/>
+  <!-- Drip B: under CS center -->
+  <path d="M500,224 L508,224 Q508,241 504,256 Q500,241 500,224 Z" fill="#00AAFF" opacity="0.9"/>
+  <!-- Drip C: under S -->
+  <path d="M549,225 L557,225 Q557,238 553,249 Q549,238 549,225 Z" fill="#00AAFF" opacity="0.65"/>
+
+  <!-- Divider line -->
+  <line x1="340" y1="278" x2="860" y2="278" stroke="#00AAFF" stroke-opacity="0.25" stroke-width="1"/>
+
+  <!-- Tagline -->
+  <text text-anchor="middle" x="600" y="310"
+    font-family="'Courier New','Lucida Console',monospace"
+    font-size="15" font-weight="500" letter-spacing="4.5"
+    fill="#4488BB" opacity="0.9">CS2 SKIN PERPETUAL FUTURES ON SOLANA</text>
+
+  <!-- ── CTA buttons (decorative) ── -->
+  <!-- Start Trading — filled -->
+  <rect x="388" y="334" width="170" height="40" rx="8" fill="#00AAFF" opacity="0.9"/>
+  <text text-anchor="middle" x="473" y="360"
+    font-family="'Arial Black','Impact',sans-serif"
+    font-size="13" font-weight="900" letter-spacing="1.5"
+    fill="#000000">START TRADING</text>
+
+  <!-- Connect Wallet — outline -->
+  <rect x="578" y="334" width="194" height="40" rx="8" fill="none" stroke="#00AAFF" stroke-width="1.5" opacity="0.55"/>
+  <text text-anchor="middle" x="675" y="360"
+    font-family="'Arial Black','Impact',sans-serif"
+    font-size="13" font-weight="900" letter-spacing="1.5"
+    fill="#00AAFF" opacity="0.8">CONNECT WALLET</text>
+</svg>

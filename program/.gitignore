@@ -1,0 +1,17 @@
+# Rust / Cargo
+target/
+
+# Anchor artefacts
+.anchor/
+target/deploy/
+
+# Solana test ledger
+test-ledger/
+
+# Node (for tests)
+node_modules/
+.yarn/
+
+# IDL / type outputs (regenerated on every build)
+target/idl/
+target/types/

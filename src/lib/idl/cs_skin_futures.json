@@ -1,0 +1,3294 @@
+{
+  "address": "76QQzNaRCjcF83bf3Bx6XN67eHbthDETKdLSVccfXf9f",
+  "metadata": {
+    "name": "cs_skin_futures",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "CS2 skin perpetual futures protocol on Solana"
+  },
+  "instructions": [
+    {
+      "name": "add_liquidity",
+      "docs": [
+        "Deposit USDC into the pool and receive LP tokens proportional to",
+        "the current pool share.  Resets the 24-hour withdrawal cooldown."
+      ],
+      "discriminator": [
+        181,
+        157,
+        89,
+        67,
+        143,
+        182,
+        52,
+        72
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "lp_position",
+          "docs": [
+            "Per-user LP position — created on first deposit.",
+            "Seeds: [b\"lp_position\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "liquidity_pool",
+          "docs": [
+            "Global pool state.",
+            "Seeds: [b\"liquidity_pool\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "docs": [
+            "Owner's USDC ATA — source of deposited liquidity."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault (initialized once by initialize_vault).",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "apply_funding",
+      "discriminator": [
+        199,
+        170,
+        102,
+        61,
+        252,
+        86,
+        228,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Keeper bot or protocol authority."
+          ],
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Seeds: [b\"market\", market.price_feed]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.price_feed",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "The position receiving the funding adjustment.",
+            "Seeds: [b\"position\", position.owner, market]"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "position.owner",
+                "account": "Position"
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_account",
+          "docs": [
+            "Owner's account; debited when funding is owed.",
+            "Seeds: [b\"user_account\", position.owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "position.owner",
+                "account": "Position"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "ApplyFundingParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "close_position",
+      "docs": [
+        "Close at the live oracle price.  Reverts if PriceFeed is stale (> 2 min)."
+      ],
+      "discriminator": [
+        123,
+        134,
+        81,
+        0,
+        49,
+        68,
+        98,
+        98
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "Position owner; receives net return and reclaimed rent."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_account",
+          "docs": [
+            "Seeds: [b\"user_account\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "docs": [
+            "Owner's USDC ATA — receives collateral ± PnL (created if absent)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Seeds: [b\"market\", market.price_feed]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.price_feed",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "The position to close. Rent returned to owner at end of instruction.",
+            "Seeds: [b\"position\", owner, market]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault — source of the return payment.",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA — signs vault → owner transfer."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "Protocol PriceFeed — must match `market.price_feed`."
+          ]
+        },
+        {
+          "name": "liquidity_pool",
+          "docs": [
+            "Global liquidity pool — updated as counterparty to this trade.",
+            "Seeds: [b\"liquidity_pool\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deposit",
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_account",
+          "docs": [
+            "Created on first deposit via `init_if_needed`.",
+            "Seeds: [b\"user_account\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "docs": [
+            "Depositor's USDC associated token account."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault (initialized once by initialize_vault).",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_market",
+      "discriminator": [
+        35,
+        35,
+        189,
+        193,
+        155,
+        48,
+        170,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority; payer for market account rent."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Market PDA — one per skin, seeded by price_feed pubkey.",
+            "Seeds: [b\"market\", price_feed]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "params.price_feed"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "InitializeMarketParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_pool",
+      "docs": [
+        "One-time setup: create the global LiquidityPool account.",
+        "Must be called before any add_liquidity deposits."
+      ],
+      "discriminator": [
+        95,
+        180,
+        10,
+        172,
+        84,
+        174,
+        232,
+        40
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol authority — pays rent and becomes pool.authority."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "liquidity_pool",
+          "docs": [
+            "Global pool state — one per protocol.",
+            "Seeds: [b\"liquidity_pool\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_price_feed",
+      "docs": [
+        "One-time setup: create the on-chain PriceFeed account for an index.",
+        "Must be called before `initialize_market` for the same index."
+      ],
+      "discriminator": [
+        68,
+        180,
+        81,
+        20,
+        102,
+        213,
+        145,
+        233
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol admin — pays rent, becomes feed authority."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "PDA seeds: [b\"price_feed\", skin_id.as_bytes()]",
+            "One feed per index (awp-index, ak47-index, knife-index, glove-index)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  105,
+                  99,
+                  101,
+                  95,
+                  102,
+                  101,
+                  101,
+                  100
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "skin_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "skin_id",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "initialize_vault",
+      "docs": [
+        "One-time setup: create the vault data + SPL token accounts.",
+        "Must be called before deposit, open_position, or add_liquidity."
+      ],
+      "discriminator": [
+        48,
+        191,
+        163,
+        44,
+        71,
+        129,
+        63,
+        164
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_data",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "liquidate",
+      "docs": [
+        "Liquidate an underwater position using the live PriceFeed price."
+      ],
+      "discriminator": [
+        223,
+        179,
+        226,
+        125,
+        48,
+        46,
+        39,
+        74
+      ],
+      "accounts": [
+        {
+          "name": "liquidator",
+          "docs": [
+            "Anyone can call liquidate — open to all."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "liquidator_usdc_account",
+          "docs": [
+            "Liquidator's USDC ATA — receives the 5% bonus (created if absent)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "liquidator"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "owner_account",
+          "docs": [
+            "Position owner's account — position removed from registry.",
+            "Seeds: [b\"user_account\", position.owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "position.owner",
+                "account": "Position"
+              }
+            ]
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Seeds: [b\"market\", market.price_feed]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.price_feed",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "Underwater position to liquidate.",
+            "Rent returned to liquidator when account closes.",
+            "Seeds: [b\"position\", position.owner, market]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "position.owner",
+                "account": "Position"
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault — source of liquidation bonus.",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA — signs vault → liquidator transfer."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "Protocol PriceFeed — must match `market.price_feed`."
+          ]
+        },
+        {
+          "name": "liquidity_pool",
+          "docs": [
+            "Global liquidity pool — absorbs the liquidated collateral (minus bonus).",
+            "Seeds: [b\"liquidity_pool\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "open_position",
+      "discriminator": [
+        135,
+        128,
+        47,
+        77,
+        15,
+        152,
+        240,
+        49
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user_account",
+          "docs": [
+            "Seeds: [b\"user_account\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "docs": [
+            "Owner's USDC ATA — source of collateral + taker fee."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Seeds: [b\"market\", market.price_feed]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.price_feed",
+                "account": "Market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "docs": [
+            "New position PDA — one per (owner, market) pair.",
+            "Seeds: [b\"position\", owner, market]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "account",
+                "path": "market"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault (initialized once by initialize_vault).",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "Protocol PriceFeed for this market."
+          ]
+        },
+        {
+          "name": "liquidity_pool",
+          "docs": [
+            "Global liquidity pool — credited with the taker fee.",
+            "Seeds: [b\"liquidity_pool\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "OpenPositionParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "push_price",
+      "docs": [
+        "Push a fresh VWAP price from the oracle service.  Only the registered",
+        "authority keypair can call this.  `published_at` is set by the",
+        "on-chain clock — callers cannot forge freshness."
+      ],
+      "discriminator": [
+        113,
+        238,
+        232,
+        235,
+        60,
+        71,
+        127,
+        203
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Must match `price_feed.authority`.  No rent charged — authority is",
+            "the fee-payer of the transaction and account is already initialised."
+          ],
+          "signer": true
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "The feed to update.  Constraint ensures only the registered authority",
+            "can write prices — any other signer is rejected."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "PushPriceParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "remove_liquidity",
+      "docs": [
+        "Burn LP tokens and withdraw proportional USDC.",
+        "Enforces a 24-hour cooldown after the most recent deposit."
+      ],
+      "discriminator": [
+        80,
+        85,
+        209,
+        72,
+        24,
+        206,
+        177,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "docs": [
+            "LP owner — must be the original depositor."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "lp_position",
+          "docs": [
+            "LP position being redeemed.",
+            "Seeds: [b\"lp_position\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  112,
+                  95,
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "liquidity_pool",
+          "docs": [
+            "Global pool state.",
+            "Seeds: [b\"liquidity_pool\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  113,
+                  117,
+                  105,
+                  100,
+                  105,
+                  116,
+                  121,
+                  95,
+                  112,
+                  111,
+                  111,
+                  108
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "docs": [
+            "Owner's USDC ATA — receives the withdrawn USDC (created if absent)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault — source of the withdrawal.",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault signing authority — signs the vault → owner transfer."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "lp_tokens",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_funding_rate",
+      "docs": [
+        "Permissionless crank — anyone can call once per hour."
+      ],
+      "discriminator": [
+        201,
+        178,
+        116,
+        212,
+        166,
+        144,
+        72,
+        238
+      ],
+      "accounts": [
+        {
+          "name": "market",
+          "docs": [
+            "Permissionless — any caller can crank this."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.price_feed",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_oracle",
+      "docs": [
+        "Push mark + index price manually; recomputes the funding rate."
+      ],
+      "discriminator": [
+        112,
+        41,
+        209,
+        18,
+        248,
+        226,
+        252,
+        188
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Must match `market.authority`."
+          ],
+          "signer": true,
+          "relations": [
+            "market"
+          ]
+        },
+        {
+          "name": "market",
+          "docs": [
+            "Seeds: [b\"market\", market.price_feed]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "market.price_feed",
+                "account": "Market"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "params",
+          "type": {
+            "defined": {
+              "name": "UpdateOracleParams"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "withdraw",
+      "discriminator": [
+        183,
+        18,
+        70,
+        156,
+        148,
+        109,
+        161,
+        34
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "user_account"
+          ]
+        },
+        {
+          "name": "user_account",
+          "docs": [
+            "Seeds: [b\"user_account\", owner]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  115,
+                  101,
+                  114,
+                  95,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user_usdc_account",
+          "docs": [
+            "Destination: owner's USDC ATA (created if absent)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "owner"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "vault_token",
+          "docs": [
+            "Protocol USDC SPL vault (token account).",
+            "Seeds: [b\"vault\", usdc_mint]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_data",
+          "docs": [
+            "Protocol liquidity data account.",
+            "Seeds: [b\"vault\"]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "docs": [
+            "Vault authority PDA; signs the vault → user transfer."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "LiquidityPool",
+      "discriminator": [
+        66,
+        38,
+        17,
+        64,
+        188,
+        80,
+        68,
+        129
+      ]
+    },
+    {
+      "name": "LpPosition",
+      "discriminator": [
+        105,
+        241,
+        37,
+        200,
+        224,
+        2,
+        252,
+        90
+      ]
+    },
+    {
+      "name": "Market",
+      "discriminator": [
+        219,
+        190,
+        213,
+        55,
+        0,
+        227,
+        198,
+        154
+      ]
+    },
+    {
+      "name": "Position",
+      "discriminator": [
+        170,
+        188,
+        143,
+        228,
+        122,
+        64,
+        247,
+        208
+      ]
+    },
+    {
+      "name": "PriceFeed",
+      "discriminator": [
+        189,
+        103,
+        252,
+        23,
+        152,
+        35,
+        243,
+        156
+      ]
+    },
+    {
+      "name": "UserAccount",
+      "discriminator": [
+        211,
+        33,
+        136,
+        16,
+        186,
+        110,
+        242,
+        127
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "MarketInactive",
+      "msg": "Market is currently paused"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: signer is not the market authority"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidPrice",
+      "msg": "Price must be greater than zero"
+    },
+    {
+      "code": 6003,
+      "name": "InsufficientBalance",
+      "msg": "Insufficient USDC balance"
+    },
+    {
+      "code": 6004,
+      "name": "WithdrawalExceedsBalance",
+      "msg": "Withdrawal amount exceeds available balance"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidCollateral",
+      "msg": "Collateral amount must be greater than zero"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidLeverage",
+      "msg": "Leverage must be between 1× and 20×"
+    },
+    {
+      "code": 6007,
+      "name": "PriceSlippage",
+      "msg": "Entry price exceeds slippage tolerance (max_entry_price)"
+    },
+    {
+      "code": 6008,
+      "name": "NonceMismatch",
+      "msg": "Nonce does not match user_account.position_count — re-fetch and retry"
+    },
+    {
+      "code": 6009,
+      "name": "PositionNotLiquidatable",
+      "msg": "Position is healthy and cannot be liquidated"
+    },
+    {
+      "code": 6010,
+      "name": "PositionOwnerMismatch",
+      "msg": "Position owner does not match the provided user_account"
+    },
+    {
+      "code": 6011,
+      "name": "FundingNotDue",
+      "msg": "Funding interval has not elapsed yet"
+    },
+    {
+      "code": 6012,
+      "name": "FundingTooEarly",
+      "msg": "Funding rate update interval (1 hour) has not elapsed yet"
+    },
+    {
+      "code": 6013,
+      "name": "StalePriceFeed",
+      "msg": "Price feed data is older than 2 minutes — push a fresh price"
+    },
+    {
+      "code": 6014,
+      "name": "MathOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6015,
+      "name": "MathUnderflow",
+      "msg": "Arithmetic underflow"
+    },
+    {
+      "code": 6016,
+      "name": "LpCooldownActive",
+      "msg": "LP withdrawal cooldown (24 h) has not elapsed — wait before removing liquidity"
+    },
+    {
+      "code": 6017,
+      "name": "InsufficientPoolLiquidity",
+      "msg": "Pool has insufficient liquidity to cover this withdrawal"
+    },
+    {
+      "code": 6018,
+      "name": "InsufficientLpTokens",
+      "msg": "Insufficient LP tokens — cannot withdraw more than you own"
+    }
+  ],
+  "types": [
+    {
+      "name": "ApplyFundingParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mark_price",
+            "docs": [
+              "Current oracle mark price (6 decimals, USDC)."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "InitializeMarketParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "skin_id",
+            "docs": [
+              "Human-readable skin name (e.g. \"AK-47 | Redline (Field-Tested)\")."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "price_feed",
+            "docs": [
+              "Off-chain price oracle pubkey; used as the PDA seed for this market."
+            ],
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LiquidityPool",
+      "docs": [
+        "Global liquidity pool — the protocol's counterparty for all trades.",
+        "",
+        "LPs deposit USDC and receive internal LP tokens.  The pool earns trading",
+        "fees and absorbs the counterparty risk on every perpetual position.",
+        "",
+        "PDA seeds: `[b\"liquidity_pool\"]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Admin who initialized the pool."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "total_usdc",
+            "docs": [
+              "Current USDC owned by the pool (6 decimals).",
+              "Increases when LPs deposit or traders lose/pay fees.",
+              "Decreases when LPs withdraw or traders profit."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "lp_supply",
+            "docs": [
+              "Total outstanding LP tokens (internal accounting units).",
+              "First deposit sets ratio to 1:1 (USDC → LP token)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "fees_earned",
+            "docs": [
+              "Cumulative trading fees credited to the pool (6 decimals).",
+              "Informational — used for APY display."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "trader_pnl_paid",
+            "docs": [
+              "Net PnL paid by the pool to traders (6 decimals, signed).",
+              "Positive = pool has paid out profits; negative = pool has profited."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "inception_ts",
+            "docs": [
+              "Unix timestamp of pool initialization — used to annualize APY."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA canonical bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LpPosition",
+      "docs": [
+        "Per-user LP position tracking token balance and cooldown.",
+        "",
+        "LP tokens represent a proportional share of `LiquidityPool.total_usdc`.",
+        "A 24-hour cooldown after the last deposit prevents LP front-running.",
+        "",
+        "PDA seeds: `[b\"lp_position\", owner]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "lp_tokens",
+            "type": "u64"
+          },
+          {
+            "name": "deposited_at",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Market",
+      "docs": [
+        "On-chain state for a single CS skin perpetuals market.",
+        "",
+        "PDA seeds: `[b\"market\", price_feed]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Protocol authority that can update oracle prices."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "skin_id",
+            "docs": [
+              "Human-readable CS skin name (e.g. \"AK-47 | Redline (Field-Tested)\")."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "price_feed",
+            "docs": [
+              "Off-chain price oracle pubkey; also used as the PDA seed."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "total_long_open_interest",
+            "docs": [
+              "Total notional of open long positions (6 decimals, USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_short_open_interest",
+            "docs": [
+              "Total notional of open short positions (6 decimals, USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "funding_rate",
+            "docs": [
+              "Current hourly funding rate (8 decimal places, signed).",
+              "Positive → longs pay shorts. Negative → shorts pay longs.",
+              "Updated each hour by `update_funding_rate`."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "cumulative_funding",
+            "docs": [
+              "Global funding accumulator (8 decimal places, signed i128).",
+              "Incremented by `funding_rate` every hour.",
+              "Positions snapshot this at open; `funding_owed` at close =",
+              "(current − entry) × notional / FUNDING_RATE_SCALE."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "last_funding_rate_update",
+            "docs": [
+              "Unix timestamp of the last `update_funding_rate` call.",
+              "Used to enforce the 1-hour crank interval."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "last_funding_time",
+            "docs": [
+              "Unix timestamp of the last `apply_funding` keeper call (8-hour crank)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA canonical bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OpenPositionParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "is_long",
+            "type": "bool"
+          },
+          {
+            "name": "collateral",
+            "type": "u64"
+          },
+          {
+            "name": "leverage",
+            "type": "u8"
+          },
+          {
+            "name": "max_entry_price",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Position",
+      "docs": [
+        "On-chain state for a single open perpetual position.",
+        "",
+        "Created by `open_position`, closed by `close_position` or `liquidate`.",
+        "One position per (owner, market) pair — no nonce.",
+        "",
+        "PDA seeds: `[b\"position\", owner, market]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": [
+              "Wallet that opened the position."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "market",
+            "docs": [
+              "The `Market` account this position belongs to."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "is_long",
+            "docs": [
+              "`true` = long, `false` = short."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "collateral",
+            "docs": [
+              "USDC collateral posted as margin (6 decimals)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "size",
+            "docs": [
+              "Position size in base units (6 decimal places)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "notional",
+            "docs": [
+              "Notional value at open (collateral × leverage). Stored for exact OI accounting."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "entry_price",
+            "docs": [
+              "Average entry price (6 decimal places, USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "liquidation_price",
+            "docs": [
+              "Price at which the position is auto-liquidated (6 decimals, USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "opened_at",
+            "docs": [
+              "Unix timestamp when the position was opened."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "entry_funding_index",
+            "docs": [
+              "Snapshot of `market.cumulative_funding` at position open.",
+              "Used at close to compute accrued funding:",
+              "funding_owed = (market.cumulative_funding − entry_funding_index)",
+              "× notional / FUNDING_RATE_SCALE",
+              "Positive owed = position pays; negative = position receives."
+            ],
+            "type": "i128"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA canonical bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PriceFeed",
+      "docs": [
+        "Trusted on-chain price feed written exclusively by the protocol admin.",
+        "",
+        "PDA seeds: `[b\"price_feed\", skin_id.as_bytes()]`",
+        "",
+        "The off-chain pusher (`/scripts/push-prices.ts`) fetches prices from the",
+        "oracle service and calls `push_price` every ~60 seconds.  On-chain",
+        "instructions call `oracle::get_price`, which rejects prices older than",
+        "`MAX_PRICE_AGE` (120 s) with `FuturesError::StalePriceFeed`."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Keypair authorised to call `push_price` for this feed."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "docs": [
+              "Latest pushed price in 6-decimal USDC representation.",
+              "$1.00 → 1_000_000.  Zero until the first push."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "published_at",
+            "docs": [
+              "Unix timestamp (seconds) of the last successful `push_price` call.",
+              "Set by the on-chain clock — not supplied by the caller."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA canonical bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PushPriceParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "price",
+            "docs": [
+              "Current index price from the oracle service (6 decimals, USDC).",
+              "$1.00 → 1_000_000."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UpdateOracleParams",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mark_price",
+            "docs": [
+              "Current mark price (6 decimals, USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "index_price",
+            "docs": [
+              "External index price from oracle (6 decimals, USDC)."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UserAccount",
+      "docs": [
+        "Per-user protocol account.",
+        "",
+        "Tracks the USDC balance deposited and all open position PDAs.",
+        "",
+        "PDA seeds: `[b\"user_account\", owner]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": [
+              "Wallet that owns this account."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_balance",
+            "docs": [
+              "USDC available for new positions and withdrawals (6 decimals)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "positions",
+            "docs": [
+              "Pubkeys of all open `Position` PDAs owned by this wallet.",
+              "Maximum 20 concurrent positions."
+            ],
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA canonical bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "docs": [
+        "Protocol liquidity tracker.",
+        "",
+        "Mirrors the SPL token vault balance so instructions can read total",
+        "protocol liquidity without fetching the token account.",
+        "",
+        "PDA seeds: `[b\"vault\"]`"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "total_liquidity",
+            "docs": [
+              "Total USDC deposited across all users (6 decimals)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA canonical bump."
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

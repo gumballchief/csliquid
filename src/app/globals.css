@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0b0d;
+  --foreground: #e8eaed;
+  /* Named aliases */
+  --bg-primary:   #0a0b0d;
+  --bg-surface:   #111214;
+  --border:       #1e2025;
+  --accent:       #00ff88;
+  --danger:       #ff4444;
+  --text-primary: #e8eaed;
+  --text-secondary: #6b7280;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Wallet adapter modal — dark terminal theme */
+.wallet-adapter-modal-wrapper {
+  background: #111214 !important;
+  border: 1px solid #1e2025 !important;
+  border-radius: 4px !important;
+}
+.wallet-adapter-button {
+  background: #1e2025 !important;
+  border-radius: 3px !important;
+  font-family: ui-monospace, monospace !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+.wallet-adapter-button:hover {
+  background: #2a2d35 !important;
+}
+.wallet-adapter-button-trigger {
+  background: #111214 !important;
+  border: 1px solid #1e2025 !important;
+  border-radius: 3px !important;
+}
+.wallet-adapter-button-trigger:hover {
+  background: #1e2025 !important;
+}
+
+/* Range input — terminal green thumb */
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: #00ff88;
+  cursor: pointer;
+  border-radius: 2px;
+}
+input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: #00ff88;
+  cursor: pointer;
+  border-radius: 2px;
+  border: none;
+}
+
+/* Number input — hide spinners */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] { -moz-appearance: textfield; }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0a0b0d; }
+::-webkit-scrollbar-thumb { background: #1e2025; }
+::-webkit-scrollbar-thumb:hover { background: #2a2d35; }
+
+/* Landing hero skin ticker — plays once on mount */
+@keyframes scroll {
+  from { transform: translateX(60%); }
+  to   { transform: translateX(0%); }
+}
