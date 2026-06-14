@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import WalletContextProvider from '@/contexts/WalletContextProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import AuthGuard from '@/components/auth/AuthGuard';
@@ -54,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </AuthProvider>
         </WalletContextProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
