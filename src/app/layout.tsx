@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import './globals.css';
+import { Analytics } from '@vercel/analytics/next';
 import WalletContextProvider from '@/contexts/WalletContextProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
 import AuthGuard from '@/components/auth/AuthGuard';
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <TxToastContainer />
           </AuthProvider>
         </WalletContextProvider>
+        <Analytics />
       </body>
     </html>
   );
