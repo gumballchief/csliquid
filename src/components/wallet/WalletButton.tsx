@@ -11,6 +11,8 @@ import SaveAccountModal from './SaveAccountModal';
 import SendModal        from './SendModal';
 import SwapModal        from './SwapModal';
 
+const DEVNET_USDC = new PublicKey('Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
+
 function truncate(addr: string) {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
 }
@@ -65,38 +67,74 @@ export default function WalletButton() {
   const { user, isAuthenticated, loginWithWallet, logout } = useAuth();
   const router          = useRouter();
 
-  const [open,       setOpen]       = useState(false);
-  const [balance,    setBalance]    = useState<number | null>(null);
-  const [copied,     setCopied]     = useState(false);
-  const [showExport, setShowExport] = useState(false);
-  const [showSave,   setShowSave]   = useState(false);
-  const [showSend,   setShowSend]   = useState(false);
-  const [showSwap,   setShowSwap]   = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [balance,     setBalance]     = useState<number | null | 'loading'>('loading');
+  const [usdcBalance, setUsdcBalance] = useState<number | null | 'loading'>('loading');
+  const [copied,      setCopied]      = useState(false);
+  const [showExport,  setShowExport]  = useState(false);
+  const [showSave,    setShowSave]    = useState(false);
+  const [showSend,    setShowSend]    = useState(false);
+  const [showSwap,    setShowSwap]    = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (connected && publicKey) loginWithWallet(publicKey.toBase58());
-  }, [connected, publicKey, loginWithWallet]);
+    // Don't overwrite an existing session wallet when Phantom auto-connects.
+    if (connected && publicKey && user?.type !== 'generated') {
+      loginWithWallet(publicKey.toBase58());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, loginWithWallet, user?.type]);
 
-  const fetchBalance = useCallback(async (address: string) => {
-    try {
-      const lamports = await connection.getBalance(new PublicKey(address));
-      setBalance(lamports / LAMPORTS_PER_SOL);
-    } catch { setBalance(null); }
+  const fetchBalances = useCallback(async (address: string) => {
+    setBalance('loading');
+    setUsdcBalance('loading');
+    const pk = new PublicKey(address);
+    console.log('[WalletButton] fetching balances for', address, 'on', connection.rpcEndpoint);
+
+    const [solResult, tokenResult] = await Promise.allSettled([
+      connection.getBalance(pk),
+      connection.getParsedTokenAccountsByOwner(pk, { mint: DEVNET_USDC }),
+    ]);
+
+    if (solResult.status === 'fulfilled') {
+      console.log('[WalletButton] SOL lamports:', solResult.value);
+      setBalance(solResult.value / LAMPORTS_PER_SOL);
+    } else {
+      console.error('[WalletButton] SOL fetch failed:', solResult.reason);
+      setBalance(null);
+    }
+
+    if (tokenResult.status === 'fulfilled') {
+      const accts = tokenResult.value.value;
+      const amt = accts.length > 0
+        ? (accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0
+        : 0;
+      console.log('[WalletButton] USDC balance:', amt);
+      setUsdcBalance(amt);
+    } else {
+      console.error('[WalletButton] USDC fetch failed:', tokenResult.reason);
+      setUsdcBalance(null);
+    }
   }, [connection]);
 
-  useEffect(() => {
-    if (connected && publicKey) { fetchBalance(publicKey.toBase58()); return; }
-    if (user?.type === 'generated') fetchBalance(user.address);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, publicKey?.toBase58(), user?.type]);
+  // Derive the active address once so both effects share it
+  const activeAddress = connected && publicKey
+    ? publicKey.toBase58()
+    : user?.type === 'generated' ? user.address : null;
 
   useEffect(() => {
-    if (!open) return;
-    if (connected && publicKey) { fetchBalance(publicKey.toBase58()); return; }
-    if (user?.type === 'generated') fetchBalance(user.address);
-  }, [open, connected, publicKey, user, fetchBalance]);
+    if (!activeAddress) return;
+    fetchBalances(activeAddress);
+    const timer = setInterval(() => fetchBalances(activeAddress), 30_000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAddress]);
+
+  useEffect(() => {
+    if (!open || !activeAddress) return;
+    fetchBalances(activeAddress);
+  }, [open, activeAddress, fetchBalances]);
 
   // Close on outside click (desktop only — mobile uses overlay)
   useEffect(() => {
@@ -128,7 +166,10 @@ export default function WalletButton() {
     router.push('/');
   }
 
-  const balanceDisplay = balance !== null ? `${balance.toFixed(4)} SOL` : '—';
+  const solFmt  = (v: number | null | 'loading', decimals = 4) =>
+    v === 'loading' ? '…' : v === null ? '—' : v.toFixed(decimals);
+  const balanceDisplay = `${solFmt(balance)} SOL`;
+  const usdcDisplay    = `${solFmt(usdcBalance, 2)} USDC`;
 
   // ── Extension / hardware wallet ─────────────────────────────────────────────
   if (connected && publicKey) {
@@ -143,6 +184,7 @@ export default function WalletButton() {
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[#00ff88] shrink-0" />
             <span className="tabular-nums">{truncate(address)}</span>
+            <span className="hidden sm:inline text-[10px] text-[#6b7280] tabular-nums border-l border-[#2a2d35] pl-2">{solFmt(balance, 3)} SOL</span>
             <Chevron open={open} />
           </button>
 
@@ -161,9 +203,15 @@ export default function WalletButton() {
                 </div>
               </div>
 
-              <div className="px-4 py-3 border-b border-[#1e2025] flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">SOL Balance</span>
-                <span className="font-mono text-[11px] text-white tabular-nums">{balanceDisplay}</span>
+              <div className="border-b border-[#1e2025]">
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">SOL</span>
+                  <span className="font-mono text-[11px] text-white tabular-nums">{balanceDisplay}</span>
+                </div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">USDC</span>
+                  <span className="font-mono text-[11px] text-white tabular-nums">{usdcDisplay}</span>
+                </div>
               </div>
 
               <div>
@@ -189,9 +237,9 @@ export default function WalletButton() {
         {showSwap && (
           <SwapModal
             address={address}
-            solBalance={balance ?? 0}
+            solBalance={typeof balance === 'number' ? balance : 0}
             onClose={() => setShowSwap(false)}
-            onSuccess={(newSol) => setBalance(newSol)}
+            onSuccess={(newSol, newUsdc) => { setBalance(newSol); setUsdcBalance(newUsdc); }}
           />
         )}
       </>
@@ -219,6 +267,7 @@ export default function WalletButton() {
           >
             <span className="w-1.5 h-1.5 rounded-full bg-[#6b7280] shrink-0" />
             <span className="tabular-nums">{truncate(address)}</span>
+            <span className="hidden sm:inline text-[10px] text-[#6b7280] tabular-nums border-l border-[#2a2d35] pl-2">{solFmt(balance, 3)} SOL</span>
             <Chevron open={open} />
           </button>
 
@@ -238,9 +287,15 @@ export default function WalletButton() {
                 </div>
               </div>
 
-              <div className="px-4 py-3 border-b border-[#1e2025] flex items-center justify-between">
-                <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">SOL Balance</span>
-                <span className="font-mono text-[11px] text-white tabular-nums">{balanceDisplay}</span>
+              <div className="border-b border-[#1e2025]">
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">SOL</span>
+                  <span className="font-mono text-[11px] text-white tabular-nums">{balanceDisplay}</span>
+                </div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">USDC</span>
+                  <span className="font-mono text-[11px] text-white tabular-nums">{usdcDisplay}</span>
+                </div>
               </div>
 
               <div>
@@ -269,9 +324,9 @@ export default function WalletButton() {
         {showSwap   && (
           <SwapModal
             address={address}
-            solBalance={balance ?? 0}
+            solBalance={typeof balance === 'number' ? balance : 0}
             onClose={() => setShowSwap(false)}
-            onSuccess={(newSol) => setBalance(newSol)}
+            onSuccess={(newSol, newUsdc) => { setBalance(newSol); setUsdcBalance(newUsdc); }}
           />
         )}
       </>

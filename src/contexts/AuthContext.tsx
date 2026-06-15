@@ -46,6 +46,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // If stored as generated but keypair was cleared, treat as unauthenticated
         if (parsed.type === 'generated' && !keypairB58) {
           localStorage.removeItem(STORAGE_KEY);
+        } else if (parsed.type === 'wallet' && keypairB58) {
+          // Phantom auto-connect overwrote the session wallet auth — restore it.
+          // (Explicit Phantom logins clear guest_keypair via logout() first, so
+          //  having type:'wallet' + guest_keypair means auto-connect was the culprit.)
+          try {
+            const kp = Keypair.fromSecretKey(decodeBase58(keypairB58));
+            const restored: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
+            setUser(restored);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+          } catch {
+            localStorage.removeItem(KEYPAIR_KEY);
+            setUser(parsed);
+          }
         } else {
           setUser(parsed);
         }

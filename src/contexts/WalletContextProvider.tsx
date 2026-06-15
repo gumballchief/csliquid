@@ -19,7 +19,22 @@ function WalletStateSyncer() {
   const loadWallet = usePositionsStore(s => s.loadWallet);
 
   useEffect(() => {
-    loadWallet(publicKey ? publicKey.toBase58() : null);
+    if (publicKey) {
+      loadWallet(publicKey.toBase58());
+      return;
+    }
+    // No Phantom connected — check for a session wallet so positions aren't wiped.
+    try {
+      const raw = localStorage.getItem('csliquid_auth');
+      if (raw) {
+        const parsed = JSON.parse(raw) as { type?: string; address?: string };
+        if (parsed.type === 'generated' && parsed.address) {
+          loadWallet(parsed.address);
+          return;
+        }
+      }
+    } catch {}
+    loadWallet(null);
   }, [publicKey, loadWallet]);
 
   return null;
