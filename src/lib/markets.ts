@@ -7,10 +7,11 @@ import { PROGRAM_ID } from './config';
  * Order must match the oracle service's INDEX_IDS array.
  */
 export const INDEX_IDS = [
-  'awp-index',
-  'ak47-index',
-  'knife-index',
-  'glove-index',
+  'AWP',
+  'AK47',
+  'KNIFE',
+  'GLOVE',
+  'CS500',
 ] as const;
 
 export type IndexId = (typeof INDEX_IDS)[number];
