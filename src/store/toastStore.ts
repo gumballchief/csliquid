@@ -1,12 +1,15 @@
 import { create } from 'zustand';
 
 export interface TxToast {
-  id:        string;
-  txSig:     string;
-  action:    'open' | 'close';
-  side?:     'long' | 'short';
-  skinName:  string;
-  createdAt: number;
+  id:          string;
+  txSig:       string;
+  action:      'open' | 'close';
+  side?:       'long' | 'short';
+  skinName:    string;
+  leverage?:   number;
+  notional?:   number;
+  entryPrice?: number;
+  createdAt:   number;
 }
 
 interface ToastState {
@@ -21,10 +24,10 @@ export const useToastStore = create<ToastState>((set) => ({
   addToast: (toast) => {
     const id = crypto.randomUUID();
     set((s) => ({ toasts: [...s.toasts, { ...toast, id, createdAt: Date.now() }] }));
-    // Auto-dismiss after 8 seconds
+    // Auto-dismiss after 6 seconds
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-    }, 8_000);
+    }, 6_000);
   },
 
   removeToast: (id) =>

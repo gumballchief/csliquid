@@ -1,16 +1,18 @@
 'use client';
 
 import { useToastStore, type TxToast } from '@/store/toastStore';
-import { explorerTxUrl } from '@/lib/config';
+
+const SOLSCAN_BASE = 'https://solscan.io/tx/';
+const CLUSTER      = '?cluster=devnet';
 
 export default function TxToastContainer() {
-  const toasts     = useToastStore((s) => s.toasts);
+  const toasts      = useToastStore((s) => s.toasts);
   const removeToast = useToastStore((s) => s.removeToast);
 
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-3 pointer-events-none">
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => removeToast(t.id)} />
       ))}
@@ -19,64 +21,91 @@ export default function TxToastContainer() {
 }
 
 function ToastItem({ toast: t, onDismiss }: { toast: TxToast; onDismiss: () => void }) {
-  const isOpen   = t.action === 'open';
-  const sideTag  = t.side ? ` ${t.side.toUpperCase()}` : '';
-  const label    = isOpen ? `Position opened${sideTag}` : 'Position closed';
-  const skinShort = t.skinName.includes(' | ')
-    ? t.skinName.split(' | ')[1]
-    : t.skinName;
+  const isOpen = t.action === 'open';
+  const isLong = t.side === 'long';
+
+  const dirSymbol = isLong ? '▲' : '▼';
+  const dirLabel  = t.side ? (isLong ? 'LONG' : 'SHORT') : null;
+  const dirColor  = isLong ? '#00ff88' : '#ff4444';
+
+  const market    = t.skinName.toUpperCase();
   const sigShort  = `${t.txSig.slice(0, 6)}…${t.txSig.slice(-4)}`;
+  const txUrl     = `${SOLSCAN_BASE}${t.txSig}${CLUSTER}`;
+
+  const midParts: string[] = [];
+  if (t.leverage)   midParts.push(`${t.leverage}×`);
+  if (t.notional)   midParts.push(`$${t.notional.toLocaleString(undefined, { maximumFractionDigits: 0 })} notional`);
+  if (t.entryPrice) midParts.push(`entry $${t.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const midLine = midParts.join(' · ');
 
   return (
     <div
-      className="pointer-events-auto flex items-start gap-3 w-80 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 shadow-2xl shadow-black/60 animate-in slide-in-from-bottom-2 fade-in duration-200"
-      style={{ animation: 'slideInFromBottom 0.2s ease-out' }}
+      className="pointer-events-auto w-72"
+      style={{
+        animation:    'toast-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        background:   '#0d0d0d',
+        borderRadius: '2px',
+        borderLeft:   '3px solid #00ff88',
+        borderTop:    '1px solid #1e2025',
+        borderRight:  '1px solid #1e2025',
+        borderBottom: '1px solid #1e2025',
+        padding:      '10px 12px',
+        boxShadow:    '0 8px 32px rgba(0,0,0,0.85), 0 0 0 1px rgba(0,255,136,0.04)',
+      }}
     >
-      {/* Icon */}
-      <div className={`mt-0.5 flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-        isOpen ? 'bg-green-900/60' : 'bg-blue-900/60'
-      }`}>
-        {isOpen ? (
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <path d="M2 7l3 3 6-6" stroke="#4ade80" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-            <circle cx="6.5" cy="6.5" r="4.5" stroke="#60a5fa" strokeWidth="1.8"/>
-            <path d="M6.5 4v3l2 1" stroke="#60a5fa" strokeWidth="1.4" strokeLinecap="round"/>
-          </svg>
-        )}
-      </div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 space-y-1.5">
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-xs font-semibold ${isOpen ? 'text-green-400' : 'text-blue-400'}`}>
-          {label}
-        </p>
-        <p className="text-[11px] text-gray-400 truncate mt-0.5">{skinShort}</p>
-        <a
-          href={explorerTxUrl(t.txSig)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 mt-1.5 text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors font-mono"
+          {/* Top line: direction badge + market */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            {isOpen && dirLabel ? (
+              <span className="font-mono text-[11px] font-bold shrink-0" style={{ color: dirColor }}>
+                {dirSymbol} {dirLabel}
+              </span>
+            ) : (
+              <span className="font-mono text-[11px] font-bold text-[#888] shrink-0">
+                ✕ CLOSED
+              </span>
+            )}
+            <span className="font-mono text-[10px] text-[#444]">·</span>
+            <span className="font-mono text-[11px] text-white font-medium truncate">{market}</span>
+          </div>
+
+          {/* Middle line: leverage · notional · entry */}
+          {midLine && (
+            <p className="font-mono text-[10px] tabular-nums" style={{ color: '#555' }}>
+              {midLine}
+            </p>
+          )}
+
+          {/* Bottom line: TX hash link */}
+          <a
+            href={txUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 font-mono text-[10px] transition-colors"
+            style={{ color: '#00994d' }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#00ff88')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#00994d')}
+          >
+            TX {sigShort} ↗
+          </a>
+        </div>
+
+        {/* Dismiss */}
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 mt-0.5 transition-colors"
+          style={{ color: '#2a2a2a' }}
+          onMouseEnter={e => (e.currentTarget.style.color = '#555')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#2a2a2a')}
         >
-          {sigShort}
-          <svg width="9" height="9" viewBox="0 0 9 9" fill="none">
-            <path d="M1.5 7.5l6-6M7.5 7.5V1.5H1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-        </a>
+        </button>
       </div>
-
-      {/* Dismiss */}
-      <button
-        onClick={onDismiss}
-        className="flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors p-0.5 mt-0.5"
-        aria-label="Dismiss"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-          <path d="M9 1L1 9M1 1l8 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
-        </svg>
-      </button>
     </div>
   );
 }

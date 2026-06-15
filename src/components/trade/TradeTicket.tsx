@@ -213,7 +213,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         const positionPda = findPositionPda(publicKey, marketPda);
         setShowReview(false);
         setCollateral('');
-        addToast({ txSig: sig, action: 'open', side, skinName });
+        addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58() });
         fetchUserAccountBalance(connection, publicKey)
           .then(b => { if (b !== null) setVaultBalance(b); })
@@ -255,7 +255,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         const positionPda = findPositionPda(owner, marketPda);
         setShowReview(false);
         setCollateral('');
-        addToast({ txSig: sig, action: 'open', side, skinName });
+        addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58() });
         fetchUserAccountBalance(connection, owner)
           .then(b => { if (b !== null) setVaultBalance(b); })
