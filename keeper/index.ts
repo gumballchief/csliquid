@@ -36,7 +36,7 @@ const ASSOCIATED_TOKEN_PROGRAM_ID  = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5x
 const LAMPORTS_PER_USD  = 1_000_000;    // 6-decimal fixed-point
 const STALE_ORACLE_MS   = 10 * 60_000;  // 10 minutes
 
-const INDEX_IDS = ['awp-index', 'ak47-index', 'knife-index', 'glove-index'] as const;
+const INDEX_IDS = ['AWP', 'AK47', 'KNIFE', 'GLOVE', 'CS500'] as const;
 type IndexId = (typeof INDEX_IDS)[number];
 
 
@@ -169,7 +169,8 @@ interface ApiPrices {
   updatedAt: number;
 }
 
-const PRICES_API_URL   = 'https://cs-skin-futures.vercel.app/api/prices';
+const PRICES_API_URL        = 'https://cs-skin-futures.vercel.app/api/prices';
+const PRICE_HISTORY_API_URL = 'https://cs-skin-futures.vercel.app/api/price-history';
 const PRICES_CACHE_TTL = 2 * 60_000;  // 2 min
 
 let _pricesCache:   ApiPrices | null = null;
@@ -195,11 +196,12 @@ async function fetchIndexPrices(): Promise<ApiPrices> {
   }
 }
 
-const INDEX_TO_FIELD: Record<IndexId, 'awp' | 'ak47' | 'knife' | 'glove'> = {
-  'awp-index':   'awp',
-  'ak47-index':  'ak47',
-  'knife-index': 'knife',
-  'glove-index': 'glove',
+const INDEX_TO_FIELD: Record<IndexId, keyof Omit<ApiPrices, 'updatedAt'>> = {
+  'AWP':   'awp',
+  'AK47':  'ak47',
+  'KNIFE': 'knife',
+  'GLOVE': 'glove',
+  'CS500': 'cs500',
 };
 
 async function computeIndexPrice(indexId: IndexId): Promise<number> {
@@ -229,7 +231,16 @@ async function runPricePusher(): Promise<void> {
         })
         .rpc();
 
-      results.push({ label: indexId.replace('-index', '').toUpperCase(), price });
+      results.push({ label: indexId, price });
+
+      // Push to price-history API (best-effort)
+      try {
+        fetch(PRICE_HISTORY_API_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ market: indexId, price, timestamp: Math.floor(Date.now() / 1000) }),
+        }).catch(() => {});
+      } catch {}
     } catch (err) {
       console.error(`[PRICE] Failed to push ${indexId}:`, err);
       await alert(`push_price failed for ${indexId}: ${String(err)}`);

@@ -37,7 +37,8 @@ function fmtLargeUSD(n: number) {
   return '$' + n.toFixed(2);
 }
 
-type StepTab = 'All' | 'Rifles' | 'Knives' | 'Pistols';
+type StepTab  = 'All' | 'Rifles' | 'Knives' | 'Pistols';
+type SortMode = 'DEFAULT' | 'TOP_GAINERS' | 'TOP_LOSERS';
 
 interface PoolStats {
   initialized: boolean;
@@ -67,7 +68,8 @@ export default function LandingPage() {
     'awp-index': awp, 'ak47-index': ak47, 'knife-index': knife, 'glove-index': glove,
   };
 
-  const [pool, setPool] = useState<PoolStats | null>(null);
+  const [pool,     setPool]     = useState<PoolStats | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>('DEFAULT');
 
   useEffect(() => {
     fetch('/api/pool/stats').then(r => r.json()).then(setPool).catch(() => {});
@@ -195,9 +197,32 @@ export default function LandingPage() {
       <section className="border-b border-tx-border">
         <div className="max-w-7xl mx-auto px-4 py-6 space-y-2">
 
+          {/* Sort filter buttons */}
+          <div className="flex gap-1.5 mb-2">
+            {(['DEFAULT', 'TOP_GAINERS', 'TOP_LOSERS'] as SortMode[]).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setSortMode(mode)}
+                className={`px-3 py-1.5 text-[9px] font-mono uppercase tracking-[0.08em] rounded-sm transition-colors ${
+                  sortMode === mode
+                    ? 'bg-tx-raised text-tx-green border border-tx-green/40'
+                    : 'bg-tx-surface text-tx-dim border border-tx-border hover:text-tx-muted'
+                }`}
+              >
+                {mode === 'DEFAULT' ? 'Default' : mode === 'TOP_GAINERS' ? '▲ Top Gainers' : '▼ Top Losers'}
+              </button>
+            ))}
+          </div>
+
           {/* 4 live market price cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-tx-border rounded overflow-hidden">
-            {MARKET_META.map(m => {
+            {[...MARKET_META].sort((a, b) => {
+              if (sortMode === 'DEFAULT') return 0;
+              const da = skinData[a.id], db = skinData[b.id];
+              return sortMode === 'TOP_GAINERS'
+                ? db.changePct24h - da.changePct24h
+                : da.changePct24h - db.changePct24h;
+            }).map(m => {
               const d = skinData[m.id];
               const pos = d.changePct24h >= 0;
               return (
