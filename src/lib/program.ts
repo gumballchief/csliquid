@@ -2,8 +2,6 @@
  * Anchor program client for cs_skin_futures.
  *
  * IDL lives at src/lib/idl/cs_skin_futures.json.
- * Replace it with the `anchor build` output once the program is compiled:
- *   cp program/target/idl/cs_skin_futures.json src/lib/idl/cs_skin_futures.json
  *
  * All price/collateral values are stored on-chain with 6 decimal places:
  *   $42.50  →  42_500_000  (u64 lamports)
@@ -16,7 +14,7 @@ import {
   Program,
   type AnchorError,
 } from '@coral-xyz/anchor';
-import { PublicKey, SystemProgram, type Connection, type ConfirmOptions } from '@solana/web3.js';
+import { Keypair, PublicKey, SystemProgram, Transaction, type Connection, type ConfirmOptions } from '@solana/web3.js';
 import type { WalletContextState } from '@solana/wallet-adapter-react';
 import rawIdl from './idl/cs_skin_futures.json';
 import { COMMITMENT, PROGRAM_ID, USDC_MINT } from './config';
@@ -28,7 +26,7 @@ export const TOKEN_PROGRAM_ID = new PublicKey(
   'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA',
 );
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1dWE',
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
 );
 
 // ── PDA helpers ──────────────────────────────────────────────────────────────
@@ -148,13 +146,13 @@ export interface OpenPositionArgs {
   isLong:       boolean;
   collateral:   number;   // USD
   leverage:     number;
-  markPrice:    number;   // USD — used for 1% slippage ceiling on longs
+  markPrice:    number;   // USD — used for slippage ceiling on longs
   slippagePct?: number;   // default 1
 }
 
 /**
- * Sends the `open_position` instruction.
- * Returns the confirmed transaction signature.
+ * Opens a position using the user's vault balance as collateral.
+ * No wallet ATA transfer — deducts directly from UserAccount.usdc_balance.
  */
 export async function sendOpenPosition(
   program: Program,
@@ -163,20 +161,13 @@ export async function sendOpenPosition(
 ): Promise<string> {
   const { skinId, isLong, collateral, leverage, markPrice, slippagePct = 1 } = args;
 
-  const priceFeed        = getPriceFeed(skinId);
-  const market           = findMarketPda(priceFeed);
-  const position         = findPositionPda(owner, market);
-  const userAccount      = findUserAccountPda(owner);
-  const vaultToken       = findVaultTokenPda();
-  const vaultData        = findVaultDataPda();
-  const vaultAuthority   = findVaultAuthorityPda();
-  const userUsdcAccount  = getUserUsdcAta(owner);
+  const priceFeed  = getPriceFeed(skinId);
+  const market     = findMarketPda(priceFeed);
+  const position   = findPositionPda(owner, market);
+  const userAccount = findUserAccountPda(owner);
 
-  // For a long we cap at mark × (1 + slippage); for a short we floor — just
-  // use a generous u64::MAX-equivalent for shorts since the constraint is a
-  // ceiling check on the Rust side (longs want to avoid paying too much).
-  const slippageMul         = isLong ? 1 + slippagePct / 100 : 1000;
-  const maxEntryPrice        = toUsdcLamports(markPrice * slippageMul);
+  const slippageMul   = isLong ? 1 + slippagePct / 100 : 1000;
+  const maxEntryPrice = toUsdcLamports(markPrice * slippageMul);
 
   return program.methods
     .openPosition({
@@ -188,64 +179,146 @@ export async function sendOpenPosition(
     .accounts({
       owner,
       userAccount,
-      userUsdcAccount,
       market,
       position,
-      vaultToken,
-      vaultData,
-      vaultAuthority,
       priceFeed,
-      liquidityPool:          findLiquidityPoolPda(),
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      systemProgram:          SystemProgram.programId,
+      liquidityPool: findLiquidityPoolPda(),
+      systemProgram: SystemProgram.programId,
     })
     .rpc();
 }
 
 /**
- * Sends the `close_position` instruction.
- * Returns the confirmed transaction signature.
+ * Like sendOpenPosition but signs with a local Keypair (generated/guest wallets).
+ * No wallet popup required.
+ */
+export async function sendOpenPositionKeypair(
+  connection: Connection,
+  signer: Keypair,
+  args: OpenPositionArgs,
+): Promise<string> {
+  const { skinId, isLong, collateral, leverage, markPrice, slippagePct = 1 } = args;
+  const owner = signer.publicKey;
+
+  const priceFeed   = getPriceFeed(skinId);
+  const market      = findMarketPda(priceFeed);
+  const position    = findPositionPda(owner, market);
+  const userAccount = findUserAccountPda(owner);
+
+  const slippageMul   = isLong ? 1 + slippagePct / 100 : 1000;
+  const maxEntryPrice = toUsdcLamports(markPrice * slippageMul);
+
+  const walletLike = {
+    publicKey:           signer.publicKey,
+    signTransaction:     async (tx: Transaction) => { tx.partialSign(signer); return tx; },
+    signAllTransactions: async (txs: Transaction[]) => {
+      txs.forEach(t => t.partialSign(signer));
+      return txs;
+    },
+  };
+  const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
+  const program  = new Program(rawIdl as unknown as Idl, provider);
+
+  const ix = await program.methods
+    .openPosition({ isLong, collateral: toUsdcLamports(collateral), leverage, maxEntryPrice })
+    .accounts({
+      owner,
+      userAccount,
+      market,
+      position,
+      priceFeed,
+      liquidityPool: findLiquidityPoolPda(),
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: signer.publicKey }).add(ix);
+  tx.sign(signer);
+
+  const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  return sig;
+}
+
+/**
+ * Closes a position. Net return (collateral ± PnL − fees) is credited to
+ * UserAccount.usdc_balance — the user withdraws separately.
  */
 export async function sendClosePosition(
   program: Program,
   owner: PublicKey,
   skinId: string,
 ): Promise<string> {
-  const priceFeed        = getPriceFeed(skinId);
-  const market           = findMarketPda(priceFeed);
-  const position         = findPositionPda(owner, market);
-  const userAccount      = findUserAccountPda(owner);
-  const vaultToken       = findVaultTokenPda();
-  const vaultData        = findVaultDataPda();
-  const vaultAuthority   = findVaultAuthorityPda();
-  const userUsdcAccount  = getUserUsdcAta(owner);
+  const priceFeed   = getPriceFeed(skinId);
+  const market      = findMarketPda(priceFeed);
+  const position    = findPositionPda(owner, market);
+  const userAccount = findUserAccountPda(owner);
 
   return program.methods
     .closePosition()
     .accounts({
       owner,
       userAccount,
-      userUsdcAccount,
       market,
       position,
-      vaultToken,
-      vaultData,
-      vaultAuthority,
       priceFeed,
-      liquidityPool:          findLiquidityPoolPda(),
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      systemProgram:          SystemProgram.programId,
+      liquidityPool: findLiquidityPoolPda(),
+      systemProgram: SystemProgram.programId,
     })
     .rpc();
 }
 
 /**
+ * Like sendClosePosition but signs with a local Keypair (generated/guest wallets).
+ */
+export async function sendClosePositionKeypair(
+  connection: Connection,
+  signer: Keypair,
+  skinId: string,
+): Promise<string> {
+  const owner = signer.publicKey;
+
+  const priceFeed   = getPriceFeed(skinId);
+  const market      = findMarketPda(priceFeed);
+  const position    = findPositionPda(owner, market);
+  const userAccount = findUserAccountPda(owner);
+
+  const walletLike = {
+    publicKey:           signer.publicKey,
+    signTransaction:     async (tx: Transaction) => { tx.partialSign(signer); return tx; },
+    signAllTransactions: async (txs: Transaction[]) => {
+      txs.forEach(t => t.partialSign(signer));
+      return txs;
+    },
+  };
+  const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
+  const program  = new Program(rawIdl as unknown as Idl, provider);
+
+  const ix = await program.methods
+    .closePosition()
+    .accounts({
+      owner,
+      userAccount,
+      market,
+      position,
+      priceFeed,
+      liquidityPool: findLiquidityPoolPda(),
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: signer.publicKey }).add(ix);
+  tx.sign(signer);
+
+  const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  return sig;
+}
+
+/**
  * Sends the `add_liquidity` instruction.
- * Returns the confirmed transaction signature.
  */
 export async function sendAddLiquidity(
   program: Program,
@@ -278,7 +351,6 @@ export async function sendAddLiquidity(
 
 /**
  * Sends the `remove_liquidity` instruction.
- * Returns the confirmed transaction signature.
  */
 export async function sendRemoveLiquidity(
   program: Program,
@@ -305,6 +377,76 @@ export async function sendRemoveLiquidity(
       usdcMint:               USDC_MINT,
       tokenProgram:           TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram:          SystemProgram.programId,
+    })
+    .rpc();
+}
+
+const ASSOC_TOKEN_PROGRAM = new PublicKey(
+  'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL',
+);
+
+/**
+ * Read the user's deposited USDC from their on-chain UserAccount PDA.
+ * Returns null when the account doesn't exist yet (no deposit made).
+ *
+ * Account layout: discriminator(8) + owner pubkey(32) + usdc_balance u64(8)
+ */
+export async function fetchUserAccountBalance(
+  connection: Connection,
+  owner: PublicKey,
+): Promise<number | null> {
+  const info = await connection.getAccountInfo(findUserAccountPda(owner));
+  if (!info || info.data.length < 48) return null;
+  const raw = new BN(Array.from(info.data.slice(40, 48)), 'le');
+  return raw.toNumber() / 1_000_000;
+}
+
+/**
+ * Sends the `deposit` instruction — moves USDC from wallet ATA → vault.
+ * Creates the user_account PDA on first deposit (init_if_needed).
+ */
+export async function sendDeposit(
+  program: Program,
+  owner: PublicKey,
+  amountUsd: number,
+): Promise<string> {
+  return program.methods
+    .deposit(toUsdcLamports(amountUsd))
+    .accounts({
+      owner,
+      userAccount:            findUserAccountPda(owner),
+      userUsdcAccount:        getUserUsdcAta(owner),
+      vaultToken:             findVaultTokenPda(),
+      vaultData:              findVaultDataPda(),
+      usdcMint:               USDC_MINT,
+      tokenProgram:           TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
+      systemProgram:          SystemProgram.programId,
+    })
+    .rpc();
+}
+
+/**
+ * Sends the `withdraw` instruction — moves USDC from vault → wallet ATA.
+ */
+export async function sendWithdraw(
+  program: Program,
+  owner: PublicKey,
+  amountUsd: number,
+): Promise<string> {
+  return program.methods
+    .withdraw(toUsdcLamports(amountUsd))
+    .accounts({
+      owner,
+      userAccount:            findUserAccountPda(owner),
+      userUsdcAccount:        getUserUsdcAta(owner),
+      vaultToken:             findVaultTokenPda(),
+      vaultData:              findVaultDataPda(),
+      vaultAuthority:         findVaultAuthorityPda(),
+      usdcMint:               USDC_MINT,
+      tokenProgram:           TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
       systemProgram:          SystemProgram.programId,
     })
     .rpc();

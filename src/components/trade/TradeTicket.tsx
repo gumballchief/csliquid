@@ -1,17 +1,24 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import type { Program } from '@coral-xyz/anchor';
+import { decodeBase58 } from '@/lib/base58';
 import { useAuth } from '@/contexts/AuthContext';
 import ReviewModal from './ReviewModal';
 import SwapModal   from '@/components/wallet/SwapModal';
 import { usePositionsStore } from '@/store/positionsStore';
 import { useToastStore } from '@/store/toastStore';
 import { useProgram } from '@/hooks/useProgram';
-import { sendOpenPosition, extractErrorMessage, findMarketPda, findPositionPda } from '@/lib/program';
+import {
+  sendOpenPosition, sendOpenPositionKeypair,
+  extractErrorMessage, findMarketPda, findPositionPda,
+  sendDeposit, sendWithdraw, fetchUserAccountBalance,
+} from '@/lib/program';
+import { USDC_MINT } from '@/lib/config';
 import { isMarketConfigured, getPriceFeed } from '@/lib/markets';
-import { calcLiquidationPrice, calcNotional } from '@/lib/perps';
+import { calcLiquidationPrice, calcNotional, calcTakerFee } from '@/lib/perps';
 import { useMarketPrice } from '@/hooks/useMarketPrice';
 import { Skin } from '@/types';
 
@@ -25,7 +32,7 @@ interface Props {
 type OrderType = 'market' | 'limit' | 'stop';
 
 const QUICK_LEVERAGES = [1, 2, 5, 10, 20] as const;
-const LEV_MARKS       = [1, 5, 10, 15, 20, 25] as const;
+const LEV_MARKS       = [1, 2, 5, 10, 20] as const;
 
 function fmtPrice(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -53,8 +60,10 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   const [limitPrice,   setLimitPrice]   = useState('');
   const [stopLoss,     setStopLoss]     = useState('');
   const [takeProfit,   setTakeProfit]   = useState('');
-  const [solBalance,   setSolBalance]   = useState<number | null>(null);
-  const [showReview,   setShowReview]   = useState(false);
+  const [solBalance,        setSolBalance]        = useState<number | null>(null);
+  const [walletUsdcBalance, setWalletUsdcBalance] = useState<number | null>(null);
+  const [vaultBalance,      setVaultBalance]      = useState<number | null>(null);
+  const [showReview,        setShowReview]        = useState(false);
   const [showDeposit,  setShowDeposit]  = useState(false);
   const [showSwap,     setShowSwap]     = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -64,6 +73,14 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     ? publicKey.toBase58()
     : user?.type === 'generated' ? user.address : null;
 
+  // Public key for the active signer — covers Phantom and generated wallets
+  const generatedPubkey = useMemo(
+    () => user?.type === 'generated' ? new PublicKey(user.address) : null,
+    [user],
+  );
+  const signerPubkey = (connected && publicKey) ? publicKey : generatedPubkey;
+
+  // SOL balance for display
   useEffect(() => {
     if (!sessionAddress) { setSolBalance(0); return; }
     let cancelled = false;
@@ -73,19 +90,50 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     return () => { cancelled = true; };
   }, [sessionAddress, connection]);
 
+  // Wallet USDC ATA balance (for WALLET display in balance bar)
+  useEffect(() => {
+    if (!signerPubkey) { setWalletUsdcBalance(null); return; }
+    let cancelled = false;
+    connection.getParsedTokenAccountsByOwner(signerPubkey, { mint: USDC_MINT })
+      .then(res => {
+        if (cancelled) return;
+        const accts = res.value;
+        setWalletUsdcBalance(accts.length > 0
+          ? ((accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0)
+          : 0);
+      })
+      .catch(() => { if (!cancelled) setWalletUsdcBalance(0); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, generatedPubkey, connection]);
+
+  // Vault balance — fetch for both Phantom and generated wallet users
+  useEffect(() => {
+    if (!signerPubkey) { setVaultBalance(null); return; }
+    let cancelled = false;
+    fetchUserAccountBalance(connection, signerPubkey)
+      .then(b => { if (!cancelled) setVaultBalance(b ?? 0); })
+      .catch(() => { if (!cancelled) setVaultBalance(0); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, generatedPubkey, connection]);
+
+  // AVAIL = vault balance for any keyed user; simulated store balance for pure guests
+  const availBalance = signerPubkey ? (vaultBalance ?? 0) : usdcBalance;
+
   const entryPrice = orderType === 'market'
     ? markPrice * (1 + (side === 'long' ? 0.00015 : -0.00015))
     : parseFloat(limitPrice) || markPrice;
 
   const col      = parseFloat(collateral) || 0;
   const notional = calcNotional(col, leverage);
-  const size     = col > 0 ? notional / entryPrice : 0;
-  const fee      = col > 0 ? notional * 0.02 : 0;
+  const size     = notional / entryPrice;                  // units of asset
+  const fee      = col > 0 ? calcTakerFee(notional) : 0; // 0.2% of notional
   const liqPrice = calcLiquidationPrice(side, entryPrice, leverage);
 
   const setColPct = useCallback((pct: number) => {
-    setCollateral((usdcBalance * pct).toFixed(2));
-  }, [usdcBalance]);
+    setCollateral((availBalance * pct).toFixed(2));
+  }, [availBalance]);
 
   const handleReview = () => {
     if (col <= 0) return;
@@ -94,8 +142,25 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   };
 
   const handleConfirm = async () => {
+    // ── Path 1: Phantom wallet — requires wallet popup ──────────────────────
     if (connected && publicKey && program && isMarketConfigured(skinId)) {
       setIsSubmitting(true);
+
+      let accountExists: boolean;
+      try {
+        accountExists = (await fetchUserAccountBalance(connection, publicKey)) !== null;
+      } catch {
+        accountExists = false;
+      }
+      if (!accountExists) {
+        setIsSubmitting(false);
+        setShowReview(false);
+        setFeedback({ ok: false, msg: 'One-time activation needed — deposit any amount to enable trading' });
+        setShowDeposit(true);
+        setTimeout(() => setFeedback(null), 6_000);
+        return;
+      }
+
       try {
         const sig = await sendOpenPosition(program, publicKey, {
           skinId, isLong: side === 'long', collateral: col, leverage, markPrice: entryPrice,
@@ -107,6 +172,9 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName });
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58() });
+        fetchUserAccountBalance(connection, publicKey)
+          .then(b => { if (b !== null) setVaultBalance(b); })
+          .catch(() => {});
       } catch (err) {
         setShowReview(false);
         setFeedback({ ok: false, msg: extractErrorMessage(err) });
@@ -117,6 +185,49 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
       return;
     }
 
+    // ── Path 2: Generated wallet — signs silently with local keypair ────────
+    if (user?.type === 'generated' && isMarketConfigured(skinId)) {
+      setIsSubmitting(true);
+      try {
+        const kpRaw = localStorage.getItem('guest_keypair');
+        if (!kpRaw) throw new Error('No trading keypair found — try logging out and back in');
+        const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
+        const owner  = signer.publicKey;
+
+        const accountExists = (await fetchUserAccountBalance(connection, owner)) !== null;
+        if (!accountExists) {
+          setIsSubmitting(false);
+          setShowReview(false);
+          setFeedback({ ok: false, msg: 'Deposit USDC first to activate your account' });
+          setShowDeposit(true);
+          setTimeout(() => setFeedback(null), 6_000);
+          return;
+        }
+
+        const sig = await sendOpenPositionKeypair(connection, signer, {
+          skinId, isLong: side === 'long', collateral: col, leverage, markPrice: entryPrice,
+        });
+        const priceFeed   = getPriceFeed(skinId);
+        const marketPda   = findMarketPda(priceFeed);
+        const positionPda = findPositionPda(owner, marketPda);
+        setShowReview(false);
+        setCollateral('');
+        addToast({ txSig: sig, action: 'open', side, skinName });
+        openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58() });
+        fetchUserAccountBalance(connection, owner)
+          .then(b => { if (b !== null) setVaultBalance(b); })
+          .catch(() => {});
+      } catch (err) {
+        setShowReview(false);
+        setFeedback({ ok: false, msg: extractErrorMessage(err) });
+        setTimeout(() => setFeedback(null), 6_000);
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // ── Path 3: Pure simulation (no keypair, no wallet) ─────────────────────
     setShowReview(false);
     const result = openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice });
     if (result.success) {
@@ -129,9 +240,9 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   };
 
   const isLong   = side === 'long';
-  const canTrade = col > 0 && col + fee <= usdcBalance;
-  const hasUsdc  = usdcBalance > 0;
-  const levPct   = ((leverage - 1) / 24) * 100;
+  const canTrade = col > 0 && col + fee <= availBalance;
+  const hasUsdc  = availBalance > 0;
+  const levPct   = ((leverage - 1) / 19) * 100;
 
   return (
     <>
@@ -161,13 +272,13 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         <div className="px-3 py-2 bg-tx-bg border-b border-tx-border flex items-center justify-between text-[10px] font-mono">
           <span>
             <span className="text-tx-dim uppercase tracking-wider">Avail </span>
-            <span className="text-tx-text tabular-nums">${usdcBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-tx-text tabular-nums">${availBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <span className="text-tx-dim ml-1">USDC</span>
           </span>
           <span>
             <span className="text-tx-dim uppercase tracking-wider">Wallet </span>
-            <span className="text-tx-text tabular-nums">{solBalance === null ? '…' : solBalance.toFixed(4)}</span>
-            <span className="text-tx-dim ml-1">SOL</span>
+            <span className="text-tx-text tabular-nums">{walletUsdcBalance === null ? '…' : walletUsdcBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-tx-dim ml-1">USDC</span>
           </span>
         </div>
 
@@ -212,7 +323,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
             <div className="flex justify-between mb-1">
               <span className={labelCls}>Collateral</span>
               <span className="text-[10px] font-mono text-tx-dim tabular-nums">
-                ${usdcBalance.toFixed(2)} USDC
+                ${availBalance.toFixed(2)} USDC
               </span>
             </div>
             <div className="relative">
@@ -250,7 +361,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
 
             <input
               type="range"
-              min={1} max={25} step={1}
+              min={1} max={20} step={1}
               value={leverage}
               onChange={e => setLeverage(Number(e.target.value))}
               className="w-full h-1 appearance-none outline-none cursor-pointer rounded-none"
@@ -322,21 +433,17 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
 
           {/* ── Position summary ── */}
           <div className="bg-tx-bg border border-tx-border rounded-sm p-3 space-y-2">
-            <Row label="Size"       value={col > 0 ? `${size.toFixed(4)}` : '—'} />
+            <Row label="Size"
+              value={col > 0 ? `${size.toFixed(4)} ($${fmtPrice(notional)})` : '—'}
+            />
             <Row label="Entry"      value={`$${fmtPrice(entryPrice)}`} />
             <Row label="Liq Price"
-              value={col > 0 ? `$${fmtPrice(liqPrice)}` : '—'}
-              valueClass={col > 0 ? (isLong ? 'text-tx-red' : 'text-tx-green') : undefined}
+              value={`$${fmtPrice(liqPrice)}`}
+              valueClass={isLong ? 'text-tx-red' : 'text-tx-green'}
             />
             <div className="border-t border-tx-border pt-2">
-              <Row label="Fee (2%)" value={col > 0 ? `$${fee.toFixed(2)}` : '—'} dim />
+              <Row label="Fee (0.05%)" value={col > 0 ? `$${fee.toFixed(2)}` : '—'} dim />
             </div>
-          </div>
-
-          {/* ── Simulation notice ── */}
-          <div className="flex items-center gap-1.5 text-[10px] font-mono text-tx-dim">
-            <span className="w-1.5 h-1.5 bg-tx-dim shrink-0" />
-            SIMULATION · NO REAL FUNDS
           </div>
 
           {/* ── Feedback ── */}
@@ -385,13 +492,32 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         </div>
       </div>
 
-      {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
+      {showDeposit && (
+        <DepositModal
+          onClose={() => setShowDeposit(false)}
+          program={program}
+          publicKey={publicKey}
+          onSuccess={(newVaultBal) => setVaultBalance(newVaultBal)}
+        />
+      )}
       {showSwap && sessionAddress && (
         <SwapModal
           address={sessionAddress}
           solBalance={solBalance ?? 0}
           onClose={() => setShowSwap(false)}
-          onSuccess={(newSol) => setSolBalance(newSol)}
+          onSuccess={(newSol) => {
+            setSolBalance(newSol);
+            if (signerPubkey) {
+              connection.getParsedTokenAccountsByOwner(signerPubkey, { mint: USDC_MINT })
+                .then(res => {
+                  const accts = res.value;
+                  setWalletUsdcBalance(accts.length > 0
+                    ? ((accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0)
+                    : 0);
+                })
+                .catch(() => {});
+            }
+          }}
         />
       )}
       {showReview && (
@@ -420,22 +546,90 @@ function Row({ label, value, valueClass, dim }: {
   );
 }
 
-function DepositModal({ onClose }: { onClose: () => void }) {
-  const [tab,    setTab]    = useState<'deposit' | 'withdraw'>('deposit');
-  const [amount, setAmount] = useState('');
-  const [done,   setDone]   = useState(false);
+function DepositModal({
+  onClose,
+  program,
+  publicKey,
+  onSuccess,
+}: {
+  onClose: () => void;
+  program: Program | null;
+  publicKey: PublicKey | null;
+  onSuccess: (newVaultBalance: number) => void;
+}) {
+  const { connection } = useConnection();
+  const [tab,          setTab]        = useState<'deposit' | 'withdraw'>('deposit');
+  const [amount,       setAmount]     = useState('');
+  const [walletUsdc,   setWalletUsdc] = useState<number | null>(null);
+  const [deposited,    setDeposited]  = useState<number | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [feedback,     setFeedback]   = useState<{ ok: boolean; msg: string } | null>(null);
 
-  function handleConfirm() {
+  // Fetch both wallet USDC and current vault balance on open
+  useEffect(() => {
+    if (!publicKey) return;
+    connection.getParsedTokenAccountsByOwner(publicKey, { mint: USDC_MINT })
+      .then(res => {
+        const accts = res.value;
+        setWalletUsdc(accts.length > 0
+          ? ((accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0)
+          : 0);
+      })
+      .catch(() => setWalletUsdc(0));
+    fetchUserAccountBalance(connection, publicKey)
+      .then(b => setDeposited(b ?? 0))
+      .catch(() => setDeposited(0));
+  }, [publicKey, connection]);
+
+  const maxAmount = tab === 'deposit' ? (walletUsdc ?? 0) : (deposited ?? 0);
+
+  async function handleSubmit() {
     const val = parseFloat(amount);
-    if (!val || val <= 0) return;
-    setDone(true);
-    setTimeout(() => { setDone(false); setAmount(''); }, 2000);
+    if (!val || val <= 0 || !program || !publicKey) return;
+    setIsSubmitting(true);
+    setFeedback(null);
+    try {
+      if (tab === 'deposit') {
+        await sendDeposit(program, publicKey, val);
+      } else {
+        await sendWithdraw(program, publicKey, val);
+      }
+      // Refresh both balances after tx confirms
+      const [vaultRes, tokenRes] = await Promise.allSettled([
+        fetchUserAccountBalance(connection, publicKey),
+        connection.getParsedTokenAccountsByOwner(publicKey, { mint: USDC_MINT }),
+      ]);
+      const newVault = vaultRes.status === 'fulfilled' ? (vaultRes.value ?? 0) : deposited ?? 0;
+      let newWalletBal = walletUsdc ?? 0;
+      if (tokenRes.status === 'fulfilled') {
+        const accts = tokenRes.value.value;
+        newWalletBal = accts.length > 0
+          ? ((accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0)
+          : 0;
+        setWalletUsdc(newWalletBal);
+      }
+      setDeposited(newVault);
+      setAmount('');
+      setFeedback({ ok: true, msg: `✓ ${tab === 'deposit' ? 'Deposited' : 'Withdrawn'} $${val.toFixed(2)} USDC` });
+      onSuccess(newVault);
+      setTimeout(() => setFeedback(null), 3_000);
+    } catch (err) {
+      setFeedback({ ok: false, msg: extractErrorMessage(err) });
+      setTimeout(() => setFeedback(null), 6_000);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  const val       = parseFloat(amount) || 0;
+  const canSubmit = !isSubmitting && !!program && !!publicKey && val > 0 && val <= maxAmount;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full max-w-sm bg-tx-surface border border-tx-border rounded overflow-hidden">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-tx-border">
           <h2 className="text-[11px] font-mono uppercase tracking-[0.08em] text-tx-muted">Margin Account</h2>
           <button onClick={onClose} className="text-tx-dim hover:text-tx-text transition-colors">
@@ -445,11 +639,30 @@ function DepositModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
+        {/* Balance summary */}
+        <div className="grid grid-cols-2 border-b border-tx-border">
+          <div className="px-4 py-3">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-tx-dim mb-0.5">Wallet</div>
+            <div className="text-[13px] font-mono tabular-nums text-tx-text">
+              {walletUsdc === null ? '…' : walletUsdc.toFixed(2)}
+              <span className="text-[10px] text-tx-dim ml-1">USDC</span>
+            </div>
+          </div>
+          <div className="px-4 py-3 border-l border-tx-border">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-tx-dim mb-0.5">Deposited</div>
+            <div className="text-[13px] font-mono tabular-nums text-tx-green">
+              {deposited === null ? '…' : deposited.toFixed(2)}
+              <span className="text-[10px] text-tx-dim ml-1">USDC</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tab switcher */}
         <div className="flex gap-px bg-tx-border m-3 mb-0 rounded-sm overflow-hidden">
           {(['deposit', 'withdraw'] as const).map(t => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => { setTab(t); setAmount(''); setFeedback(null); }}
               className={`flex-1 py-1.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
                 tab === t ? 'bg-tx-raised text-tx-text' : 'bg-tx-surface text-tx-dim hover:text-tx-muted'
               }`}
@@ -460,31 +673,53 @@ function DepositModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-4 space-y-3">
-          <label className="block">
-            <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-tx-dim block mb-1">Amount (USDC)</span>
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-tx-dim">$</span>
-              <input
-                type="number" min="0" step="any"
-                value={amount}
-                onChange={e => setAmount(e.target.value)}
-                placeholder="0.00"
-                className="w-full bg-tx-bg border border-tx-border2 rounded-sm pl-5 pr-3 py-2 text-[12px] text-tx-text placeholder-tx-dim font-mono focus:outline-none focus:border-tx-muted transition-colors"
-              />
-            </div>
-          </label>
+          {!program || !publicKey ? (
+            <p className="text-[11px] font-mono text-tx-dim text-center py-3">
+              Connect your Phantom wallet to deposit USDC.
+            </p>
+          ) : (
+            <>
+              <label className="block">
+                <div className="flex justify-between mb-1">
+                  <span className="text-[10px] font-mono uppercase tracking-[0.08em] text-tx-dim">Amount (USDC)</span>
+                  <button
+                    className="text-[10px] font-mono text-tx-dim hover:text-tx-text transition-colors"
+                    onClick={() => setAmount(maxAmount.toFixed(2))}
+                  >
+                    Max {maxAmount.toFixed(2)}
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-tx-dim">$</span>
+                  <input
+                    type="number" min="0" step="any"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full bg-tx-bg border border-tx-border2 rounded-sm pl-5 pr-3 py-2 text-[12px] text-tx-text placeholder-tx-dim font-mono focus:outline-none focus:border-tx-muted transition-colors"
+                  />
+                </div>
+              </label>
 
-          <p className="text-[10px] font-mono text-tx-dim">Margin account is simulated. No real USDC is transferred.</p>
+              {feedback && (
+                <div className={`py-2 rounded-sm text-[11px] font-mono font-bold text-center border ${
+                  feedback.ok
+                    ? 'bg-tx-green/10 text-tx-green border-tx-green/30'
+                    : 'bg-tx-red/10 text-tx-red border-tx-red/30'
+                }`}>
+                  {feedback.msg}
+                </div>
+              )}
 
-          <button
-            onClick={handleConfirm}
-            disabled={!amount || parseFloat(amount) <= 0}
-            className={`w-full py-2.5 rounded-sm text-[11px] font-mono uppercase tracking-wider font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              done ? 'bg-tx-green text-tx-bg' : 'bg-tx-raised text-tx-text hover:bg-tx-border2'
-            }`}
-          >
-            {done ? '✓ Done' : tab === 'deposit' ? 'Deposit USDC' : 'Withdraw USDC'}
-          </button>
+              <button
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+                className="w-full py-2.5 rounded-sm text-[11px] font-mono uppercase tracking-wider font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-tx-raised text-tx-text hover:bg-tx-border2"
+              >
+                {isSubmitting ? 'Confirming…' : tab === 'deposit' ? 'Deposit USDC' : 'Withdraw USDC'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

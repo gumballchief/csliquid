@@ -37,5 +37,13 @@ next-env.d.ts
 
 # runtime data (SQLite databases)
 /data/*.db
+**/*.db
+
+# keeper build output (built on server by deploy.sh)
+keeper/dist/
+keeper/logs/
+
+# Solana keypair dumps — never commit private keys
+CSLQsy314KoBqbYFRdvD8grJFCKPN4myHnBp7Avo2JsG.json
 
 .vercel

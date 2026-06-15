@@ -1,38 +1,25 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{self, Mint, Token, TokenAccount, Transfer},
-};
 
 use crate::{
     errors::FuturesError,
     math::*,
     oracle::get_price,
-    state::{LiquidityPool, Market, Position, PriceFeed, UserAccount, Vault},
+    state::{LiquidityPool, Market, Position, PriceFeed, UserAccount},
 };
 
 #[derive(Accounts)]
 pub struct ClosePosition<'info> {
-    /// Position owner; receives net return and reclaimed rent.
     #[account(mut)]
     pub owner: Signer<'info>,
 
     /// Seeds: [b"user_account", owner]
     #[account(
         mut,
-        seeds = [b"user_account", owner.key().as_ref()],
-        bump  = user_account.bump,
+        seeds   = [b"user_account", owner.key().as_ref()],
+        bump    = user_account.bump,
+        has_one = owner @ FuturesError::Unauthorized,
     )]
     pub user_account: Box<Account<'info, UserAccount>>,
-
-    /// Owner's USDC ATA — receives collateral ± PnL (created if absent).
-    #[account(
-        init_if_needed,
-        payer                       = owner,
-        associated_token::mint      = usdc_mint,
-        associated_token::authority = owner,
-    )]
-    pub user_usdc_account: Box<Account<'info, TokenAccount>>,
 
     /// Seeds: [b"market", market.price_feed]
     #[account(
@@ -53,32 +40,6 @@ pub struct ClosePosition<'info> {
     )]
     pub position: Box<Account<'info, Position>>,
 
-    /// Protocol USDC SPL vault — source of the return payment.
-    /// Seeds: [b"vault", usdc_mint]
-    #[account(
-        mut,
-        seeds = [b"vault", usdc_mint.key().as_ref()],
-        bump,
-    )]
-    pub vault_token: Box<Account<'info, TokenAccount>>,
-
-    /// Protocol liquidity data account.
-    /// Seeds: [b"vault"]
-    #[account(
-        mut,
-        seeds = [b"vault"],
-        bump  = vault_data.bump,
-    )]
-    pub vault_data: Box<Account<'info, Vault>>,
-
-    /// Vault authority PDA — signs vault → owner transfer.
-    /// CHECK: verified by seeds + bump.
-    #[account(
-        seeds = [b"vault_authority"],
-        bump,
-    )]
-    pub vault_authority: UncheckedAccount<'info>,
-
     /// Protocol PriceFeed — must match `market.price_feed`.
     #[account(
         constraint = price_feed.key() == market.price_feed @ FuturesError::InvalidPrice
@@ -94,19 +55,14 @@ pub struct ClosePosition<'info> {
     )]
     pub liquidity_pool: Box<Account<'info, LiquidityPool>>,
 
-    pub usdc_mint:                Account<'info, Mint>,
-    pub token_program:            Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program:           Program<'info, System>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(ctx: Context<ClosePosition>) -> Result<()> {
     let clock = Clock::get()?;
 
-    // ── Exit price from PriceFeed (staleness guard inside get_price) ──────────
     let exit_price = get_price(&ctx.accounts.price_feed, &clock)?;
 
-    // Snapshot position fields before mutable borrows split the struct.
     let position_key        = ctx.accounts.position.key();
     let is_long             = ctx.accounts.position.is_long;
     let size                = ctx.accounts.position.size;
@@ -116,17 +72,13 @@ pub fn handler(ctx: Context<ClosePosition>) -> Result<()> {
     let entry_funding_index = ctx.accounts.position.entry_funding_index;
     let cumulative_funding  = ctx.accounts.market.cumulative_funding;
 
-    // ── PnL math ──────────────────────────────────────────────────────────────
-    // notional is taken from position.notional (set at open) for exact OI accounting.
     let gross_pnl   = calc_unrealized_pnl(is_long, size, entry_price, exit_price)?;
     let closing_fee = calc_taker_fee(notional)?;
 
-    // Funding owed since position open (positive = position pays out).
     let index_delta  = cumulative_funding.wrapping_sub(entry_funding_index);
     let funding_owed = calc_funding_owed(is_long, index_delta, notional)?;
 
     // net_return = collateral + gross_pnl − closing_fee − funding_owed, clamped ≥ 0.
-    // Clamping enforces isolated margin: trader cannot owe more than posted.
     let net_return = {
         let raw = (collateral as i64)
             .checked_add(gross_pnl)
@@ -138,34 +90,14 @@ pub fn handler(ctx: Context<ClosePosition>) -> Result<()> {
         raw.max(0) as u64
     };
 
-    // ── SPL transfer: vault → owner wallet ───────────────────────────────────
-    if net_return > 0 {
-        let bump = ctx.bumps.vault_authority;
-        let signer_seeds: &[&[&[u8]]] = &[&[b"vault_authority", &[bump]]];
-
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from:      ctx.accounts.vault_token.to_account_info(),
-                    to:        ctx.accounts.user_usdc_account.to_account_info(),
-                    authority: ctx.accounts.vault_authority.to_account_info(),
-                },
-                signer_seeds,
-            ),
-            net_return,
-        )?;
-    }
-
-    // ── State mutations ───────────────────────────────────────────────────────
-
-    ctx.accounts.vault_data.total_liquidity =
-        ctx.accounts.vault_data.total_liquidity.saturating_sub(net_return);
+    // Credit net_return to the user's vault balance — no SPL transfer needed.
+    ctx.accounts.user_account.usdc_balance = ctx.accounts.user_account.usdc_balance
+        .saturating_add(net_return);
 
     // Pool counterparty accounting:
     //   pool_delta = collateral − net_return
     //   > 0: trader lost (or paid fees/funding) → pool gained
-    //   < 0: trader profited more than fees → pool paid the difference
+    //   < 0: trader profited more than fees     → pool paid the difference
     let pool_delta: i64 = (collateral as i64) - (net_return as i64);
     let pool = &mut ctx.accounts.liquidity_pool;
     if pool_delta >= 0 {

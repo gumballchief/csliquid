@@ -31,106 +31,146 @@ export default function ReviewModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Prevent body scroll while open
   useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  const rows: { label: string; value: string; valueClass?: string; dim?: boolean }[] = [
-    { label: 'Order Type',     value: orderType === 'market' ? 'Market' : orderType === 'stop' ? 'Stop' : 'Limit' },
-    { label: 'Collateral',     value: `$${collateral.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC` },
-    { label: 'Leverage',       value: `${leverage}×` },
-    { label: 'Notional Value', value: `$${notional.toLocaleString(undefined, { maximumFractionDigits: 2 })}` },
-    { label: 'Position Size',  value: `${positionSize.toFixed(4)} units` },
-    { label: 'Est. Entry',     value: `$${entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}` },
-    { label: 'Fee (2%)', value: `-$${takerFee.toFixed(2)}`, dim: true },
-  ];
+  const fmt = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const orderLabel = orderType === 'market' ? 'Market' : orderType === 'stop' ? 'Stop' : 'Limit';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-        onClick={onClose}
-      />
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
-      {/* Sheet */}
-      <div className="relative bg-gray-900 border border-gray-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm shadow-2xl shadow-black/60">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-800">
-          <div className="flex items-center gap-2.5">
-            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
-              isLong ? 'bg-green-900/70 text-green-400' : 'bg-red-900/70 text-red-400'
-            }`}>
-              {side.toUpperCase()}
+      <div
+        className="relative w-full md:max-w-sm overflow-y-auto max-h-[100dvh] md:max-h-[90vh]"
+        style={{ background: '#111214', border: '1px solid #1e2025', borderRadius: '4px 4px 0 0' }}
+      >
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2025]">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="font-mono text-[12px] font-bold uppercase tracking-[0.12em]"
+              style={{ color: isLong ? '#00ff88' : '#ff4444' }}
+            >
+              {side}
             </span>
-            <span className="text-sm font-semibold text-white">{skinName}</span>
-            <span className="text-xs text-gray-500 font-mono bg-gray-800 px-1.5 py-0.5 rounded">{leverage}×</span>
+            <span className="font-mono text-[12px] font-bold uppercase tracking-[0.12em] text-[#6b7280]">
+              · {skinName} · {leverage}× · {orderLabel}
+            </span>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors p-1 rounded-md hover:bg-gray-800">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-              <path d="M13 1L1 13M1 1l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          <button
+            onClick={onClose}
+            className="text-[#374151] hover:text-[#6b7280] transition-colors"
+            aria-label="Close"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Rows */}
-        <div className="px-5 py-1">
-          {rows.map(({ label, value, valueClass, dim }) => (
-            <div key={label} className="flex justify-between items-center py-2.5 border-b border-gray-800/40">
-              <span className={`text-xs ${dim ? 'text-gray-600' : 'text-gray-400'}`}>{label}</span>
-              <span className={`text-xs font-mono font-medium ${valueClass ?? (dim ? 'text-gray-500' : 'text-gray-200')}`}>
-                {value}
+        <div className="p-4 space-y-3">
+
+          {/* ── Position summary box ── */}
+          <div style={{ background: '#0a0b0d', border: '1px solid #2a2d35', borderRadius: 3 }}>
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-[#1e2025]">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">
+                Collateral
+              </span>
+              <span className="font-mono text-[13px] font-bold text-white tabular-nums">
+                ${fmt(collateral)} <span className="text-[11px] font-normal text-[#6b7280]">USDC</span>
               </span>
             </div>
-          ))}
-          {/* Liquidation price — highlighted */}
-          <div className="flex justify-between items-center py-2.5">
-            <span className="text-xs text-gray-400">Liquidation Price</span>
-            <span className={`text-xs font-mono font-bold ${isLong ? 'text-red-400' : 'text-green-400'}`}>
-              ${liqPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </span>
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">
+                Notional
+              </span>
+              <span
+                className="font-mono text-[13px] font-bold tabular-nums"
+                style={{ color: isLong ? '#00ff88' : '#ff4444' }}
+              >
+                ${fmt(notional)}
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* Risk warning */}
-        <div className="mx-5 mb-3 px-3 py-2.5 bg-amber-950/30 border border-amber-800/30 rounded-lg">
-          <p className="text-[11px] text-amber-400/80 leading-relaxed">
-            Perpetual futures carry significant risk. Your position can be liquidated if the market moves against you by {(100 / leverage * 0.9).toFixed(1)}%.
+          {/* ── Data rows ── */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Size</span>
+              <span className="font-mono text-[10px] text-[#e8eaed] tabular-nums">
+                {positionSize.toFixed(4)} units
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Entry</span>
+              <span className="font-mono text-[10px] text-[#e8eaed] tabular-nums">${fmt(entryPrice)}</span>
+            </div>
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Liq price</span>
+              <span
+                className="font-mono text-[10px] tabular-nums"
+                style={{ color: isLong ? '#ff4444' : '#00ff88' }}
+              >
+                ${fmt(liqPrice)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between px-0.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">
+                Fee (0.05%)
+              </span>
+              <span className="font-mono text-[10px] text-[#6b7280] tabular-nums">
+                -${takerFee.toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          {/* ── Risk line ── */}
+          <p className="font-mono text-[10px] text-[#374151]">
+            Position liquidates if price moves {(100 / leverage).toFixed(1)}% against you.
           </p>
-        </div>
 
-        {/* Actions */}
-        <div className="px-5 pb-5 flex gap-2">
-          <button
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="px-4 py-2.5 text-sm font-medium text-gray-400 bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Cancel
-          </button>
+          {/* ── Confirm button — matches Swap button exactly ── */}
           <button
             onClick={onConfirm}
             disabled={isSubmitting}
-            className={`flex-1 py-2.5 text-sm font-bold rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-              isLong
-                ? 'bg-green-600 hover:bg-green-500 active:bg-green-700 text-white shadow-lg shadow-green-950/50'
-                : 'bg-red-600 hover:bg-red-500 active:bg-red-700 text-white shadow-lg shadow-red-950/50'
-            }`}
+            className="w-full py-3 font-mono text-[11px] font-bold uppercase tracking-[0.12em] disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+            style={{
+              background: isLong ? '#00ff88' : '#ff4444',
+              color:      isLong ? '#0a0b0d' : '#ffffff',
+              borderRadius: 3,
+            }}
           >
             {isSubmitting ? (
               <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
                 </svg>
-                Awaiting wallet…
+                Confirming…
               </span>
             ) : (
               `Confirm ${isLong ? 'Long' : 'Short'} →`
             )}
           </button>
+
+          {/* ── Cancel — "Powered by Jupiter" style ── */}
+          <p className="font-mono text-[10px] text-center text-[#374151]">
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="hover:text-[#6b7280] transition-colors disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </p>
+
+          {/* iOS safe-area */}
+          <div className="md:hidden" style={{ height: 'env(safe-area-inset-bottom, 0px)' }} />
         </div>
       </div>
     </div>
