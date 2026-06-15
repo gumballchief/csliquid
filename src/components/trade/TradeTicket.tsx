@@ -169,12 +169,17 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   const fee      = col > 0 ? calcTakerFee(notional) : 0; // 0.2% of notional
   const liqPrice = calcLiquidationPrice(side, entryPrice, leverage);
 
+  // 5% maintenance margin threshold — if net collateral after fee < threshold, position
+  // would be liquidated at entry. Detect so we can warn and block submission.
+  const LIQ_THRESHOLD_PCT     = 0.05;
+  const immediatelyLiquidated = col > 0 && (col - fee) < (notional * LIQ_THRESHOLD_PCT);
+
   const setColPct = useCallback((pct: number) => {
     setCollateral((availBalance * pct).toFixed(2));
   }, [availBalance]);
 
   const handleReview = () => {
-    if (col <= 0) return;
+    if (col <= 0 || immediatelyLiquidated) return;
     setFeedback(null);
     setShowReview(true);
   };
@@ -278,7 +283,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   };
 
   const isLong   = side === 'long';
-  const canTrade = col > 0 && col + fee <= availBalance;
+  const canTrade = col > 0 && col + fee <= availBalance && !immediatelyLiquidated;
   const hasUsdc  = availBalance > 0;
   const levPct   = ((leverage - 1) / 19) * 100;
 
@@ -505,13 +510,20 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
             />
             <Row label="Entry"      value={`$${fmtPrice(entryPrice)}`} />
             <Row label="Liq Price"
-              value={`$${fmtPrice(liqPrice)}`}
-              valueClass={isLong ? 'text-tx-red' : 'text-tx-green'}
+              value={immediatelyLiquidated ? '—' : `$${fmtPrice(liqPrice)}`}
+              valueClass={immediatelyLiquidated ? 'text-tx-red' : isLong ? 'text-tx-red' : 'text-tx-green'}
             />
             <div className="border-t border-tx-border pt-2">
               <Row label="Fee (0.05%)" value={col > 0 ? `$${fee.toFixed(2)}` : '—'} dim />
             </div>
           </div>
+
+          {/* ── Immediate liquidation warning ── */}
+          {immediatelyLiquidated && col > 0 && (
+            <div className="w-full py-2.5 px-3 rounded-sm text-[11px] font-mono font-bold text-center border bg-tx-red/10 text-tx-red border-tx-red/30">
+              ⚠ Position would be immediately liquidated — reduce leverage or increase collateral
+            </div>
+          )}
 
           {/* ── Feedback ── */}
           {feedback && (
