@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { PublicKey } from '@solana/web3.js';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchUserAccountBalance } from '@/lib/program';
 
 interface PoolStats {
   initialized: boolean;
@@ -79,6 +83,30 @@ export default function PoolPage() {
   const [depositAmt,  setDepositAmt]  = useState('');
   const [withdrawAmt, setWithdrawAmt] = useState('');
   const pool = usePoolStats();
+
+  const { connected, publicKey } = useWallet();
+  const { connection }           = useConnection();
+  const { user }                 = useAuth();
+  const [vaultBalance, setVaultBalance] = useState<number | null>(null);
+
+  const generatedPubkey = user?.type === 'generated' ? new PublicKey(user.address) : null;
+  const signerPubkey    = (connected && publicKey) ? publicKey : generatedPubkey;
+
+  useEffect(() => {
+    if (!signerPubkey) { setVaultBalance(null); return; }
+    let cancelled = false;
+    fetchUserAccountBalance(connection, signerPubkey)
+      .then(b => { if (!cancelled) setVaultBalance(b ?? 0); })
+      .catch(() => { if (!cancelled) setVaultBalance(0); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, generatedPubkey, connection]);
+
+  const walletUsdcDisplay = signerPubkey
+    ? (vaultBalance !== null
+        ? `$${vaultBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : '…')
+    : '$0.00';
 
   const tvl      = pool ? useFmt(pool.totalUsdc)  : '—';
   const fees     = pool ? useFmt(pool.feesEarned) : '—';
@@ -176,14 +204,14 @@ export default function PoolPage() {
             <Card title="Wallet">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono text-tx-muted">USDC Balance</span>
-                <span className="text-[11px] font-mono font-bold text-tx-text tabular-nums">$0.00</span>
+                <span className="text-[11px] font-mono font-bold text-tx-text tabular-nums">{walletUsdcDisplay}</span>
               </div>
             </Card>
 
             <InputCard
               title="Deposit"
               label="Amount (USDC)"
-              sublabel="Balance: $0.00"
+              sublabel={`Balance: ${walletUsdcDisplay}`}
               placeholder="0.00"
               btnLabel="DEPOSIT TO POOL"
               btnClass="bg-tx-green text-tx-bg hover:bg-[#00e87a]"
