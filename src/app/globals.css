@@ -84,3 +84,9 @@ input[type='number'] { -moz-appearance: textfield; }
   from { transform: translateX(60%); }
   to   { transform: translateX(0%); }
 }
+
+/* Trade confirmation toast — slides in from the right */
+@keyframes toast-slide-in {
+  from { transform: translateX(calc(100% + 24px)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
