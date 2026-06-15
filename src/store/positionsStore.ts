@@ -74,14 +74,15 @@ export interface ClosedTrade {
 // ── Params ────────────────────────────────────────────────────────────────
 
 export interface OpenPositionParams {
-  skinId:       string;
-  skin:         Skin;
-  side:         'long' | 'short';
-  collateral:   number;   // USDC, becomes initial margin
-  leverage:     number;
-  entryPrice:   number;
-  txSignature?: string;   // on-chain tx sig when opened via Anchor program
-  positionPda?: string;   // base58 position account address
+  skinId:          string;
+  skin:            Skin;
+  side:            'long' | 'short';
+  collateral:      number;   // USDC, becomes initial margin
+  leverage:        number;
+  entryPrice:      number;
+  txSignature?:    string;   // on-chain tx sig when opened via Anchor program
+  positionPda?:    string;   // base58 position account address
+  balanceOverride?: number;  // live on-chain balance; overrides stale store usdcBalance for guard checks
 }
 
 export type OpenPositionResult =
@@ -153,11 +154,13 @@ export const usePositionsStore = create<PositionsState & PositionsActions>()(
       openPosition: (params) => {
         const { skinId, skin, side, collateral, leverage, entryPrice } = params;
         const { usdcBalance } = get();
+        // Use live on-chain balance when provided (avoids stale store value for wallet users)
+        const guardBalance = typeof params.balanceOverride === 'number' ? params.balanceOverride : usdcBalance;
 
-        if (collateral <= 0)             return { success: false, error: 'Collateral must be greater than zero' };
-        if (collateral > usdcBalance)    return { success: false, error: 'Insufficient USDC balance' };
+        if (collateral <= 0)               return { success: false, error: 'Collateral must be greater than zero' };
+        if (collateral > guardBalance)     return { success: false, error: 'Insufficient USDC balance' };
         if (leverage < 1 || leverage > 20) return { success: false, error: `Leverage must be between 1× and 20×` };
-        if (entryPrice <= 0)             return { success: false, error: 'Invalid entry price' };
+        if (entryPrice <= 0)               return { success: false, error: 'Invalid entry price' };
 
         const notional          = calcNotional(collateral, leverage);
         const size              = calcSize(collateral, leverage, entryPrice);
@@ -166,7 +169,7 @@ export const usePositionsStore = create<PositionsState & PositionsActions>()(
         const maintenanceMargn  = calcMaintenanceMargin(notional);
         const liquidationPrice  = calcLiquidationPrice(side, entryPrice, leverage);
 
-        if (totalCost > usdcBalance) {
+        if (totalCost > guardBalance) {
           return { success: false, error: 'Insufficient balance to cover margin and fee' };
         }
 

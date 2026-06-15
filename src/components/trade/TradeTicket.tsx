@@ -272,7 +272,19 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
 
     // ── Path 3: Pure simulation (no keypair, no wallet) ─────────────────────
     setShowReview(false);
-    const result = openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice });
+
+    // For wallet users who fell through (e.g. market not yet on-chain), fetch the
+    // live on-chain balance so the guard matches what AVAIL displays — not the
+    // stale store value that may differ from the actual UserAccount balance.
+    let guardBalance: number | undefined;
+    if (signerPubkey) {
+      try {
+        const b = await fetchUserAccountBalance(connection, signerPubkey);
+        if (b !== null) guardBalance = b;
+      } catch {}
+    }
+
+    const result = openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, balanceOverride: guardBalance });
     if (result.success) {
       setCollateral('');
       setFeedback({ ok: true, msg: '✓ Position opened (simulation)' });
