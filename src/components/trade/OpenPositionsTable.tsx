@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { Keypair } from '@solana/web3.js';
 import { usePositionsStore, PerpsPosition, selectTotalUnrealizedPnl } from '@/store/positionsStore';
 import { useToastStore } from '@/store/toastStore';
 import { useProgram } from '@/hooks/useProgram';
-import { sendClosePosition, extractErrorMessage } from '@/lib/program';
+import { useAuth } from '@/contexts/AuthContext';
+import { sendClosePosition, sendClosePositionKeypair, extractErrorMessage } from '@/lib/program';
+import { decodeBase58 } from '@/lib/base58';
 import { isMarketConfigured } from '@/lib/markets';
 import { fetchSkinPrice } from '@/services/skinPriceService';
 
@@ -21,6 +24,8 @@ export default function OpenPositionsTable() {
   const pnlUp               = totalPnl >= 0;
 
   const { publicKey } = useWallet();
+  const { connection } = useConnection();
+  const { user }      = useAuth();
   const program       = useProgram();
   const addToast      = useToastStore((s) => s.addToast);
 
@@ -55,8 +60,19 @@ export default function OpenPositionsTable() {
   };
 
   const handleClosePosition = async (pos: PerpsPosition): Promise<void> => {
+    // Phantom wallet
     if (program && publicKey && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
+      addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
+      closePosition(pos.id, pos.markPrice);
+      return;
+    }
+    // Generated wallet
+    if (user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
+      const kpRaw = localStorage.getItem('guest_keypair');
+      if (!kpRaw) throw new Error('No trading keypair found');
+      const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
+      const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
       closePosition(pos.id, pos.markPrice);
       return;

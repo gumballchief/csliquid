@@ -403,11 +403,11 @@
       "accounts": [
         {
           "name": "owner",
-          "docs": [
-            "Position owner; receives net return and reclaimed rent."
-          ],
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "user_account"
+          ]
         },
         {
           "name": "user_account",
@@ -439,99 +439,6 @@
                 "path": "owner"
               }
             ]
-          }
-        },
-        {
-          "name": "user_usdc_account",
-          "docs": [
-            "Owner's USDC ATA — receives collateral ± PnL (created if absent)."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "owner"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
           }
         },
         {
@@ -595,84 +502,6 @@
           }
         },
         {
-          "name": "vault_token",
-          "docs": [
-            "Protocol USDC SPL vault — source of the return payment.",
-            "Seeds: [b\"vault\", usdc_mint]"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_data",
-          "docs": [
-            "Protocol liquidity data account.",
-            "Seeds: [b\"vault\"]"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_authority",
-          "docs": [
-            "Vault authority PDA — signs vault → owner transfer."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "price_feed",
           "docs": [
             "Protocol PriceFeed — must match `market.price_feed`."
@@ -708,17 +537,6 @@
               }
             ]
           }
-        },
-        {
-          "name": "usdc_mint"
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
           "name": "system_program",
@@ -1241,6 +1059,108 @@
       "args": []
     },
     {
+      "name": "initialize_vault_token",
+      "docs": [
+        "Add a vault token account for an additional USDC mint (e.g. devnet test mint).",
+        "vault_data must already exist; only the token account is created."
+      ],
+      "discriminator": [
+        78,
+        78,
+        57,
+        128,
+        30,
+        167,
+        41,
+        180
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault_data",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_token",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "liquidate",
       "docs": [
         "Liquidate an underwater position using the live PriceFeed price."
@@ -1602,11 +1522,15 @@
         {
           "name": "owner",
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "user_account"
+          ]
         },
         {
           "name": "user_account",
           "docs": [
+            "User must have deposited first — account is required to exist.",
             "Seeds: [b\"user_account\", owner]"
           ],
           "writable": true,
@@ -1634,99 +1558,6 @@
                 "path": "owner"
               }
             ]
-          }
-        },
-        {
-          "name": "user_usdc_account",
-          "docs": [
-            "Owner's USDC ATA — source of collateral + taker fee."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "owner"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
           }
         },
         {
@@ -1790,54 +1621,6 @@
           }
         },
         {
-          "name": "vault_token",
-          "docs": [
-            "Protocol USDC SPL vault (initialized once by initialize_vault).",
-            "Seeds: [b\"vault\", usdc_mint]"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "usdc_mint"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_data",
-          "docs": [
-            "Protocol liquidity data account.",
-            "Seeds: [b\"vault\"]"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "price_feed",
           "docs": [
             "Protocol PriceFeed for this market."
@@ -1873,17 +1656,6 @@
               }
             ]
           }
-        },
-        {
-          "name": "usdc_mint"
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
           "name": "system_program",
@@ -2226,6 +1998,84 @@
         {
           "name": "lp_tokens",
           "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "set_market_authority",
+      "docs": [
+        "Transfer the authority on a Market to a new keypair.",
+        "Must be signed by the current authority."
+      ],
+      "discriminator": [
+        124,
+        100,
+        155,
+        213,
+        122,
+        121,
+        177,
+        115
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Current market authority — must sign to transfer ownership."
+          ],
+          "signer": true
+        },
+        {
+          "name": "market",
+          "docs": [
+            "The market whose authority is being transferred."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "set_price_feed_authority",
+      "docs": [
+        "Transfer the push authority on a PriceFeed to a new keypair.",
+        "Must be signed by the current authority."
+      ],
+      "discriminator": [
+        51,
+        30,
+        10,
+        13,
+        230,
+        196,
+        169,
+        190
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Current feed authority — must sign to transfer ownership."
+          ],
+          "signer": true
+        },
+        {
+          "name": "price_feed",
+          "docs": [
+            "The feed whose authority is being transferred."
+          ],
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "new_authority",
+          "type": "pubkey"
         }
       ]
     },

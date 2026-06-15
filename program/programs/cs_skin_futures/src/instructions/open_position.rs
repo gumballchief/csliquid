@@ -1,14 +1,10 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{self, Mint, Token, TokenAccount, Transfer},
-};
 
 use crate::{
     errors::FuturesError,
     math::*,
     oracle::get_price,
-    state::{LiquidityPool, Market, Position, PriceFeed, UserAccount, Vault},
+    state::{LiquidityPool, Market, Position, PriceFeed, UserAccount},
 };
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -24,23 +20,15 @@ pub struct OpenPosition<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
 
+    /// User must have deposited first — account is required to exist.
     /// Seeds: [b"user_account", owner]
     #[account(
-        init_if_needed,
-        payer = owner,
-        space = 8 + UserAccount::INIT_SPACE,
-        seeds = [b"user_account", owner.key().as_ref()],
-        bump,
+        mut,
+        seeds   = [b"user_account", owner.key().as_ref()],
+        bump    = user_account.bump,
+        has_one = owner @ FuturesError::Unauthorized,
     )]
     pub user_account: Box<Account<'info, UserAccount>>,
-
-    /// Owner's USDC ATA — source of collateral + taker fee.
-    #[account(
-        mut,
-        associated_token::mint      = usdc_mint,
-        associated_token::authority = owner,
-    )]
-    pub user_usdc_account: Box<Account<'info, TokenAccount>>,
 
     /// Seeds: [b"market", market.price_feed]
     #[account(
@@ -61,24 +49,6 @@ pub struct OpenPosition<'info> {
     )]
     pub position: Box<Account<'info, Position>>,
 
-    /// Protocol USDC SPL vault (initialized once by initialize_vault).
-    /// Seeds: [b"vault", usdc_mint]
-    #[account(
-        mut,
-        seeds = [b"vault", usdc_mint.key().as_ref()],
-        bump,
-    )]
-    pub vault_token: Box<Account<'info, TokenAccount>>,
-
-    /// Protocol liquidity data account.
-    /// Seeds: [b"vault"]
-    #[account(
-        mut,
-        seeds = [b"vault"],
-        bump  = vault_data.bump,
-    )]
-    pub vault_data: Box<Account<'info, Vault>>,
-
     /// Protocol PriceFeed for this market.
     #[account(
         constraint = price_feed.key() == market.price_feed @ FuturesError::InvalidPrice
@@ -94,10 +64,7 @@ pub struct OpenPosition<'info> {
     )]
     pub liquidity_pool: Box<Account<'info, LiquidityPool>>,
 
-    pub usdc_mint:                Box<Account<'info, Mint>>,
-    pub token_program:            Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
-    pub system_program:           Program<'info, System>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(ctx: Context<OpenPosition>, params: OpenPositionParams) -> Result<()> {
@@ -120,29 +87,15 @@ pub fn handler(ctx: Context<OpenPosition>, params: OpenPositionParams) -> Result
         .checked_add(taker_fee)
         .ok_or_else(|| error!(FuturesError::MathOverflow))?;
 
-    token::transfer(
-        CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from:      ctx.accounts.user_usdc_account.to_account_info(),
-                to:        ctx.accounts.vault_token.to_account_info(),
-                authority: ctx.accounts.owner.to_account_info(),
-            },
-        ),
-        total_cost,
-    )?;
-
+    // Deduct from the user's vault balance — no SPL transfer needed.
     let ua = &mut ctx.accounts.user_account;
-    if ua.owner == Pubkey::default() {
-        ua.owner = ctx.accounts.owner.key();
-        ua.bump  = ctx.bumps.user_account;
-    }
+    require!(ua.usdc_balance >= total_cost, FuturesError::InsufficientBalance);
+    ua.usdc_balance = ua
+        .usdc_balance
+        .checked_sub(total_cost)
+        .ok_or_else(|| error!(FuturesError::MathUnderflow))?;
     let position_key = ctx.accounts.position.key();
     ua.positions.push(position_key);
-
-    ctx.accounts.vault_data.total_liquidity = ctx.accounts.vault_data.total_liquidity
-        .checked_add(total_cost)
-        .ok_or_else(|| error!(FuturesError::MathOverflow))?;
 
     let market = &mut ctx.accounts.market;
     if is_long {
