@@ -2,15 +2,14 @@
 
 import { FC, ReactNode, useMemo, useEffect } from 'react';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
   TorusWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
-import { clusterApiUrl } from '@solana/web3.js';
 import { usePositionsStore } from '@/store/positionsStore';
+import { RPC_URL } from '@/lib/config';
 
 import '@solana/wallet-adapter-react-ui/styles.css'; // wallet adapter modal/button styles
 
@@ -53,8 +52,7 @@ interface Props {
 }
 
 const WalletContextProvider: FC<Props> = ({ children }) => {
-  const network = WalletAdapterNetwork.Mainnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  const endpoint = RPC_URL;
 
   const wallets = useMemo(
     () => [
