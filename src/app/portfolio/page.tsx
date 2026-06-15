@@ -1,6 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { PublicKey } from '@solana/web3.js';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   usePositionsStore,
   PerpsPosition,
@@ -8,11 +11,30 @@ import {
   selectTotalUnrealizedPnl,
   selectTotalMarginUsed,
 } from '@/store/positionsStore';
+import { fetchUserAccountBalance } from '@/lib/program';
 
 type Tab = 'positions' | 'orders' | 'history';
 
 export default function PortfolioPage() {
   const [tab, setTab] = useState<Tab>('positions');
+
+  const { connected, publicKey } = useWallet();
+  const { connection }           = useConnection();
+  const { user }                 = useAuth();
+  const [vaultBalance, setVaultBalance] = useState<number | null>(null);
+
+  const generatedPubkey = user?.type === 'generated' ? new PublicKey(user.address) : null;
+  const signerPubkey    = (connected && publicKey) ? publicKey : generatedPubkey;
+
+  useEffect(() => {
+    if (!signerPubkey) { setVaultBalance(null); return; }
+    let cancelled = false;
+    fetchUserAccountBalance(connection, signerPubkey)
+      .then(b => { if (!cancelled) setVaultBalance(b ?? 0); })
+      .catch(() => { if (!cancelled) setVaultBalance(0); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, generatedPubkey, connection]);
 
   const positions    = usePositionsStore(s => s.positions);
   const tradeHistory = usePositionsStore(s => s.tradeHistory);
@@ -22,6 +44,8 @@ export default function PortfolioPage() {
   const totalPnl     = usePositionsStore(selectTotalUnrealizedPnl);
   const marginUsed   = usePositionsStore(selectTotalMarginUsed);
   const pnlPositive  = totalPnl >= 0;
+
+  const availBalance = signerPubkey ? (vaultBalance ?? 0) : usdcBalance;
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-5">
@@ -43,7 +67,7 @@ export default function PortfolioPage() {
         {[
           {
             label: 'Available Balance',
-            value: `$${usdcBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            value: `$${availBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             valueClass: 'text-tx-text',
           },
           {
