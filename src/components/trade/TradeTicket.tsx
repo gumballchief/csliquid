@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
+import { BN } from '@coral-xyz/anchor';
 import { decodeBase58 } from '@/lib/base58';
 import { useAuth } from '@/contexts/AuthContext';
 import ReviewModal from './ReviewModal';
@@ -16,8 +17,8 @@ import {
   extractErrorMessage, findMarketPda, findPositionPda,
   sendDeposit, sendWithdraw, fetchUserAccountBalance,
 } from '@/lib/program';
-import { USDC_MINT } from '@/lib/config';
-import { isMarketConfigured, getPriceFeed } from '@/lib/markets';
+import { USDC_MINT, PROGRAM_ID } from '@/lib/config';
+import { isMarketConfigured, getPriceFeed, findPriceFeedPda } from '@/lib/markets';
 import { calcLiquidationPrice, calcNotional, calcTakerFee } from '@/lib/perps';
 import { useMarketPrice } from '@/hooks/useMarketPrice';
 import { Skin } from '@/types';
@@ -68,6 +69,8 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   const [showSwap,     setShowSwap]     = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback,     setFeedback]     = useState<{ ok: boolean; msg: string } | null>(null);
+  const [longOI,  setLongOI]  = useState<number>(0);
+  const [shortOI, setShortOI] = useState<number>(0);
 
   const sessionAddress = connected && publicKey
     ? publicKey.toBase58()
@@ -117,6 +120,41 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, publicKey, generatedPubkey, connection]);
+
+  // Open interest from Market account
+  useEffect(() => {
+    const SKIN_TO_INDEX: Record<string, string> = {
+      'awp-index': 'AWP', 'ak47-index': 'AK47',
+      'knife-index': 'KNIFE', 'glove-index': 'GLOVE', 'cs500-index': 'CS500',
+    };
+    const indexId = SKIN_TO_INDEX[skinId];
+    if (!indexId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const priceFeedPda = findPriceFeedPda(indexId);
+        const [marketPda] = PublicKey.findProgramAddressSync(
+          [Buffer.from('market'), priceFeedPda.toBuffer()],
+          PROGRAM_ID,
+        );
+        const info = await connection.getAccountInfo(marketPda);
+        if (!info || cancelled) return;
+        // Market layout: 8(disc) + 32(authority) + 32(skin_id len+str... variable) — use IDL offset
+        // Offsets: disc=8, authority=32, skin_id string (4+max64=68), price_feed=32
+        // total_long_open_interest offset = 8+32+68+32 = 140
+        // total_short_open_interest offset = 140+8 = 148
+        const data = info.data;
+        if (data.length < 156) return;
+        const longRaw  = new BN(Array.from(data.slice(140, 148)), 'le');
+        const shortRaw = new BN(Array.from(data.slice(148, 156)), 'le');
+        if (!cancelled) {
+          setLongOI(longRaw.toNumber() / 1_000_000);
+          setShortOI(shortRaw.toNumber() / 1_000_000);
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [skinId, connection]);
 
   // AVAIL = vault balance for any keyed user; simulated store balance for pure guests
   const availBalance = signerPubkey ? (vaultBalance ?? 0) : usdcBalance;
@@ -267,6 +305,35 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
             Short
           </button>
         </div>
+
+        {/* ── OI tracker ── */}
+        {(() => {
+          const total = longOI + shortOI;
+          if (total === 0) return (
+            <div className="px-3 py-1.5 bg-tx-bg border-b border-tx-border text-center">
+              <span className="text-[10px] font-mono text-tx-dim">No open interest yet</span>
+            </div>
+          );
+          const longPct  = Math.round((longOI  / total) * 100);
+          const shortPct = 100 - longPct;
+          const fmtOI = (n: number) => n >= 1000 ? `$${(n/1000).toFixed(1)}K` : `$${n.toFixed(0)}`;
+          return (
+            <div className="px-3 py-2 bg-tx-bg border-b border-tx-border">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-mono text-tx-green font-bold">LONG {longPct}%</span>
+                <span className="text-[10px] font-mono text-tx-red font-bold">SHORT {shortPct}%</span>
+              </div>
+              <div className="h-1.5 flex rounded-sm overflow-hidden">
+                <div className="bg-tx-green transition-all" style={{ width: `${longPct}%` }} />
+                <div className="bg-tx-red transition-all" style={{ width: `${shortPct}%` }} />
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[9px] font-mono text-tx-dim tabular-nums">L: {fmtOI(longOI)}</span>
+                <span className="text-[9px] font-mono text-tx-dim tabular-nums">S: {fmtOI(shortOI)}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Balance bar ── */}
         <div className="px-3 py-2 bg-tx-bg border-b border-tx-border flex items-center justify-between text-[10px] font-mono">
