@@ -22,6 +22,16 @@ const PRICE_OFFSET  = 40;   // bytes into account data where price u64 starts
 const LAMPORTS      = 1_000_000; // 6 decimal fixed-point
 const STALE_SECONDS = 300;  // price older than 5 min is considered stale
 
+// Maps canonical chain ID ('AWP') → price-service key ('awp-index').
+// Everything outside this hook uses the 'awp-index' format for price lookups.
+const ID_TO_SKIN_KEY: Record<string, string> = {
+  'AWP':   'awp-index',
+  'AK47':  'ak47-index',
+  'KNIFE': 'knife-index',
+  'GLOVE': 'glove-index',
+  'CS500': 'cs500-index',
+};
+
 // Derive PriceFeed PDA addresses from the canonical INDEX_IDS so they always
 // match the on-chain accounts (no more hardcoded stale addresses).
 const FEED_IDS  = INDEX_IDS as unknown as string[];
@@ -72,7 +82,8 @@ async function fetchAll(): Promise<OnChainPrices> {
 
     if (price <= 0) continue;
 
-    out[FEED_IDS[i]] = {
+    const skinKey = ID_TO_SKIN_KEY[FEED_IDS[i]] ?? FEED_IDS[i];
+    out[skinKey] = {
       price,
       publishedAt,
       stale: nowSec - publishedAt > STALE_SECONDS,

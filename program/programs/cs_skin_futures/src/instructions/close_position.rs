@@ -118,8 +118,8 @@ pub fn handler(ctx: Context<ClosePosition>) -> Result<()> {
     ctx.accounts.user_account.positions.retain(|p| *p != position_key);
 
     msg!(
-        "Closed @ {} | gross_pnl={} fee={} funding={} returned={}",
-        exit_price, gross_pnl, closing_fee, funding_owed, net_return,
+        "Closed entry={} exit={} size={} gross_pnl={} fee={} funding={} returned={}",
+        entry_price, exit_price, size, gross_pnl, closing_fee, funding_owed, net_return,
     );
     Ok(())
 }
