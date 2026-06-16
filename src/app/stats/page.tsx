@@ -1,6 +1,6 @@
 'use client'; // client-only: hooks + wallet state
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react'; // useRef: uptimeStart without re-renders
 import Link from 'next/link';
 import { useSkinPrice } from '@/hooks/useSkinPrice';
 
@@ -108,16 +108,17 @@ function MiniChart({ prices, height = 56 }: { prices: number[]; height?: number 
 }
 
 export default function StatsPage() {
-  const [mounted,       setMounted]       = useState(false);
   const [pool,          setPool]          = useState<PoolStats | null>(null);
   const [oracleData,    setOracleData]    = useState<Record<string, OracleStatus>>({});
   const [priceHistory,  setPriceHistory]  = useState<Record<string, PriceHistory>>({});
   const [activeMarket,  setActiveMarket]  = useState<string>('awp-index');
-  const [uptimeStart,   setUptimeStart]   = useState(0);
-  const [now,           setNow]           = useState(0);
+  // useRef for uptimeStart — doesn't need to trigger re-renders
+  const uptimeStartRef  = useRef<number>(0);
   const prices = useAllPrices();
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    uptimeStartRef.current = Date.now();
+  }, []);
 
   useEffect(() => {
     fetch('/api/pool/stats').then(r => r.json()).then(setPool).catch(() => {});
@@ -150,22 +151,6 @@ export default function StatsPage() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    const t = Date.now();
-    setUptimeStart(t);
-    setNow(t);
-    const id = setInterval(() => setNow(Date.now()), 5_000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-green-400 font-mono text-sm animate-pulse">LOADING...</div>
-      </div>
-    );
-  }
-
   const totalVol24h = prices.reduce((s, p) => s + p.volume24h, 0);
   const fees24h     = pool ? pool.feesEarned : 0;
   const tvl         = pool ? pool.totalUsdc  : 0;
@@ -174,8 +159,6 @@ export default function StatsPage() {
   const activeIndexId    = SKIN_TO_INDEX[activeMarket];
   const activeOracle     = activeIndexId ? oracleData[activeIndexId] : null;
   const activeHistory    = activeIndexId ? priceHistory[activeIndexId] : null;
-  const activePrice      = prices[MARKET_IDS.indexOf(activeMarket)];
-  const uptimeSec        = Math.round((now - uptimeStart) / 1000);
 
   // Derive session high/low from live price + history
   const histPrices    = activeHistory?.prices ?? [];
@@ -183,7 +166,8 @@ export default function StatsPage() {
   const sessionHigh   = allPrices.length > 0 ? Math.max(...allPrices) : 0;
   const sessionLow    = allPrices.length > 0 ? Math.min(...allPrices) : 0;
 
-  function fmtUptime(sec: number) {
+  function fmtUptime() {
+    const sec = Math.round((Date.now() - uptimeStartRef.current) / 1000);
     if (sec < 60) return `${sec}s`;
     if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
     const h = Math.floor(sec / 3600);
@@ -274,7 +258,7 @@ export default function StatsPage() {
               <div className="bg-tx-bg px-3 py-2">
                 <p className="text-[9px] font-mono uppercase tracking-[0.08em] text-tx-dim">Uptime</p>
                 <p className="text-[11px] font-mono font-bold text-tx-green tabular-nums mt-0.5">
-                  {fmtUptime(uptimeSec)}
+                  {fmtUptime()}
                 </p>
               </div>
             </div>
