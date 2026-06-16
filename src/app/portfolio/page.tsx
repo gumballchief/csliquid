@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProgram } from '@/hooks/useProgram';
+import { useToastStore } from '@/store/toastStore';
 import {
   usePositionsStore,
   PerpsPosition,
@@ -11,9 +13,21 @@ import {
   selectTotalUnrealizedPnl,
   selectTotalMarginUsed,
 } from '@/store/positionsStore';
-import { fetchUserAccountBalance } from '@/lib/program';
+import {
+  fetchUserAccountBalance,
+  fetchOnChainPositions,
+  sendClosePosition,
+  sendClosePositionKeypair,
+  extractErrorMessage,
+  type OnChainPosition,
+} from '@/lib/program';
+import { fetchSkinPrice } from '@/services/skinPriceService';
+import { decodeBase58 } from '@/lib/base58';
+import { isMarketConfigured } from '@/lib/markets';
 
 type Tab = 'positions' | 'orders' | 'history';
+
+const PRICE_POLL_MS = 15_000;
 
 export default function PortfolioPage() {
   const [tab, setTab] = useState<Tab>('positions');
@@ -21,11 +35,28 @@ export default function PortfolioPage() {
   const { connected, publicKey } = useWallet();
   const { connection }           = useConnection();
   const { user }                 = useAuth();
-  const [vaultBalance, setVaultBalance] = useState<number | null>(null);
+  const program                  = useProgram();
+  const addToast                 = useToastStore((s) => s.addToast);
+
+  const [vaultBalance,    setVaultBalance]    = useState<number | null>(null);
+  const [onChainPositions, setOnChainPositions] = useState<OnChainPosition[]>([]);
+  const [markPrices,      setMarkPrices]      = useState<Record<string, number>>({});
+  const [fetchingPos,     setFetchingPos]     = useState(false);
 
   const generatedPubkey = user?.type === 'generated' ? new PublicKey(user.address) : null;
   const signerPubkey    = (connected && publicKey) ? publicKey : generatedPubkey;
+  const isRealWallet    = signerPubkey !== null;
 
+  // Simulation store (pure guests only)
+  const storePositions = usePositionsStore(s => s.positions);
+  const tradeHistory   = usePositionsStore(s => s.tradeHistory);
+  const usdcBalance    = usePositionsStore(s => s.usdcBalance);
+  const closePosition  = usePositionsStore(s => s.closePosition);
+  const resetAccount   = usePositionsStore(s => s.resetAccount);
+  const totalStorePnl  = usePositionsStore(selectTotalUnrealizedPnl);
+  const storeMargin    = usePositionsStore(selectTotalMarginUsed);
+
+  // Fetch on-chain vault balance
   useEffect(() => {
     if (!signerPubkey) { setVaultBalance(null); return; }
     let cancelled = false;
@@ -33,19 +64,90 @@ export default function PortfolioPage() {
       .then(b => { if (!cancelled) setVaultBalance(b ?? 0); })
       .catch(() => { if (!cancelled) setVaultBalance(0); });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, publicKey, generatedPubkey, connection]);
 
-  const positions    = usePositionsStore(s => s.positions);
-  const tradeHistory = usePositionsStore(s => s.tradeHistory);
-  const usdcBalance  = usePositionsStore(s => s.usdcBalance);
-  const closePosition = usePositionsStore(s => s.closePosition);
-  const resetAccount  = usePositionsStore(s => s.resetAccount);
-  const totalPnl     = usePositionsStore(selectTotalUnrealizedPnl);
-  const marginUsed   = usePositionsStore(selectTotalMarginUsed);
-  const pnlPositive  = totalPnl >= 0;
+  // Fetch on-chain positions for real wallet users
+  const refreshPositions = useCallback(async () => {
+    if (!signerPubkey) { setOnChainPositions([]); return; }
+    setFetchingPos(true);
+    try {
+      const pos = await fetchOnChainPositions(connection, signerPubkey);
+      setOnChainPositions(pos);
+    } catch {
+      // leave previous state; silent fail
+    } finally {
+      setFetchingPos(false);
+    }
+  }, [connection, signerPubkey]);
 
-  const availBalance = signerPubkey ? (vaultBalance ?? 0) : usdcBalance;
+  useEffect(() => {
+    if (!isRealWallet) return;
+    refreshPositions();
+  }, [isRealWallet, refreshPositions]);
+
+  // Poll mark prices for open on-chain positions
+  useEffect(() => {
+    if (!isRealWallet || onChainPositions.length === 0) return;
+
+    const skinIds = Array.from(new Set(onChainPositions.map(p => p.priceSkinId)));
+
+    const poll = async () => {
+      const results = await Promise.allSettled(skinIds.map(id => fetchSkinPrice(id)));
+      const prices: Record<string, number> = {};
+      results.forEach((r, i) => {
+        if (r.status === 'fulfilled' && r.value.markPrice > 0) {
+          prices[skinIds[i]] = r.value.markPrice;
+        }
+      });
+      setMarkPrices(prev => ({ ...prev, ...prices }));
+    };
+
+    poll();
+    const timer = setInterval(poll, PRICE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [isRealWallet, onChainPositions.length]);
+
+  // Close an on-chain position
+  const handleCloseOnChain = useCallback(async (pos: OnChainPosition) => {
+    if (connected && publicKey && program && isMarketConfigured(pos.skinId)) {
+      const sig = await sendClosePosition(program, publicKey, pos.skinId);
+      addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
+      await refreshPositions();
+      const b = await fetchUserAccountBalance(connection, publicKey).catch(() => null);
+      if (b !== null) setVaultBalance(b);
+      return;
+    }
+    if (user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
+      const kpRaw = localStorage.getItem('guest_keypair');
+      if (!kpRaw) throw new Error('No trading keypair found — try logging out and back in');
+      const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
+      const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
+      addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
+      await refreshPositions();
+      const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
+      if (b !== null) setVaultBalance(b);
+      return;
+    }
+    throw new Error('Cannot close position — wallet not available');
+  }, [connected, publicKey, program, user, connection, addToast, refreshPositions]);
+
+  // Decide which positions to display
+  const availBalance = isRealWallet ? (vaultBalance ?? 0) : usdcBalance;
+
+  // Summary stats from on-chain positions + live prices
+  const totalOnChainPnl = onChainPositions.reduce((sum, p) => {
+    const mark = markPrices[p.priceSkinId] ?? p.entryPrice;
+    const pnl  = p.side === 'long'
+      ? (mark - p.entryPrice) * p.size
+      : (p.entryPrice - mark) * p.size;
+    return sum + pnl;
+  }, 0);
+  const totalOnChainMargin = onChainPositions.reduce((s, p) => s + p.collateral, 0);
+
+  const totalPnl   = isRealWallet ? totalOnChainPnl  : totalStorePnl;
+  const marginUsed = isRealWallet ? totalOnChainMargin : storeMargin;
+  const pnlPositive = totalPnl >= 0;
+  const positionCount = isRealWallet ? onChainPositions.length : storePositions.length;
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-5">
@@ -54,12 +156,23 @@ export default function PortfolioPage() {
           <h1 className="text-[13px] font-mono uppercase tracking-[0.08em] text-tx-text">Portfolio</h1>
           <p className="text-[11px] font-mono text-tx-muted mt-0.5">Open positions, orders, and trade history</p>
         </div>
-        <button
-          onClick={() => { if (confirm('Reset account to $10,000 and clear all positions?')) resetAccount(); }}
-          className="text-[10px] font-mono uppercase tracking-wider text-tx-dim hover:text-tx-muted border border-tx-border hover:border-tx-border2 px-3 py-1.5 rounded-sm transition-colors"
-        >
-          Reset Account
-        </button>
+        {!isRealWallet && (
+          <button
+            onClick={() => { if (confirm('Reset account to $5,000 and clear all positions?')) resetAccount(); }}
+            className="text-[10px] font-mono uppercase tracking-wider text-tx-dim hover:text-tx-muted border border-tx-border hover:border-tx-border2 px-3 py-1.5 rounded-sm transition-colors"
+          >
+            Reset Account
+          </button>
+        )}
+        {isRealWallet && (
+          <button
+            onClick={() => refreshPositions()}
+            disabled={fetchingPos}
+            className="text-[10px] font-mono uppercase tracking-wider text-tx-dim hover:text-tx-muted border border-tx-border hover:border-tx-border2 px-3 py-1.5 rounded-sm transition-colors disabled:opacity-40"
+          >
+            {fetchingPos ? '…' : 'Refresh'}
+          </button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -75,8 +188,8 @@ export default function PortfolioPage() {
             value: `${pnlPositive ? '+' : ''}$${totalPnl.toFixed(2)}`,
             valueClass: pnlPositive ? 'text-tx-green' : 'text-tx-red',
           },
-          { label: 'Margin Used',     value: `$${marginUsed.toFixed(2)}`, valueClass: 'text-tx-text' },
-          { label: 'Open Positions',  value: positions.length.toString(), valueClass: 'text-tx-text' },
+          { label: 'Margin Used',    value: `$${marginUsed.toFixed(2)}`, valueClass: 'text-tx-text' },
+          { label: 'Open Positions', value: positionCount.toString(),     valueClass: 'text-tx-text' },
         ].map(({ label, value, valueClass }) => (
           <div key={label} className="bg-tx-surface px-4 py-3">
             <p className="text-[9px] font-mono uppercase tracking-[0.1em] text-tx-dim mb-1">{label}</p>
@@ -96,8 +209,8 @@ export default function PortfolioPage() {
             }`}
           >
             {t}
-            {t === 'positions' && positions.length > 0 && (
-              <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">{positions.length}</span>
+            {t === 'positions' && positionCount > 0 && (
+              <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">{positionCount}</span>
             )}
             {t === 'history' && tradeHistory.length > 0 && (
               <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">{tradeHistory.length}</span>
@@ -108,25 +221,55 @@ export default function PortfolioPage() {
 
       {/* Positions */}
       {tab === 'positions' && (
-        positions.length === 0 ? (
-          <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">No open positions</div>
-        ) : (
-          <div className="overflow-x-auto bg-tx-surface border border-tx-border rounded">
-            <table className="w-full text-left min-w-[800px]">
-              <thead>
-                <tr className="border-b border-tx-border">
-                  {['Market', 'Side', 'Size', 'Entry', 'Mark', 'Liq. Price', 'Lev.', 'Unrealized PnL', 'Margin', ''].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-[9px] font-mono uppercase tracking-[0.08em] text-tx-dim whitespace-nowrap">{h}</th>
+        isRealWallet ? (
+          onChainPositions.length === 0 ? (
+            <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">
+              {fetchingPos ? 'Loading positions…' : 'No open positions'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto bg-tx-surface border border-tx-border rounded">
+              <table className="w-full text-left min-w-[800px]">
+                <thead>
+                  <tr className="border-b border-tx-border">
+                    {['Market', 'Side', 'Size', 'Entry', 'Mark', 'Liq. Price', 'Lev.', 'Unrealized PnL', 'Collateral', ''].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-[9px] font-mono uppercase tracking-[0.08em] text-tx-dim whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {onChainPositions.map(p => (
+                    <OnChainPositionRow
+                      key={p.positionPda}
+                      position={p}
+                      markPrice={markPrices[p.priceSkinId] ?? 0}
+                      onClose={() => handleCloseOnChain(p)}
+                    />
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map(p => (
-                  <PortfolioPositionRow key={p.id} position={p} onClose={() => closePosition(p.id, p.markPrice)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : (
+          storePositions.length === 0 ? (
+            <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">No open positions</div>
+          ) : (
+            <div className="overflow-x-auto bg-tx-surface border border-tx-border rounded">
+              <table className="w-full text-left min-w-[800px]">
+                <thead>
+                  <tr className="border-b border-tx-border">
+                    {['Market', 'Side', 'Size', 'Entry', 'Mark', 'Liq. Price', 'Lev.', 'Unrealized PnL', 'Margin', ''].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-[9px] font-mono uppercase tracking-[0.08em] text-tx-dim whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {storePositions.map(p => (
+                    <SimPositionRow key={p.id} position={p} onClose={() => closePosition(p.id, p.markPrice)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )
       )}
 
@@ -164,7 +307,128 @@ export default function PortfolioPage() {
   );
 }
 
-function PortfolioPositionRow({ position: p, onClose }: { position: PerpsPosition; onClose: () => void }) {
+// ── On-chain position row ─────────────────────────────────────────────────────
+
+function OnChainPositionRow({
+  position: p,
+  markPrice,
+  onClose,
+}: {
+  position: OnChainPosition;
+  markPrice: number;
+  onClose: () => Promise<void>;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [closing,    setClosing]    = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
+
+  const mark = markPrice > 0 ? markPrice : p.entryPrice;
+  const unrealizedPnl = p.side === 'long'
+    ? (mark - p.entryPrice) * p.size
+    : (p.entryPrice - mark) * p.size;
+  const unrealizedPnlPct = p.collateral > 0 ? (unrealizedPnl / p.collateral) * 100 : 0;
+  const pnlPositive = unrealizedPnl >= 0;
+
+  const nearLiq = p.side === 'long'
+    ? mark <= p.liquidationPrice * 1.05
+    : mark >= p.liquidationPrice * 0.95;
+
+  const handleConfirmClose = async () => {
+    setClosing(true);
+    setError(null);
+    try {
+      await onClose();
+      setConfirming(false);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+      setConfirming(false);
+      setTimeout(() => setError(null), 5_000);
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  return (
+    <tr className={`border-b border-tx-border transition-colors ${nearLiq ? 'bg-tx-red/5' : 'hover:bg-tx-raised'}`}>
+      <td className="px-4 py-3">
+        <p className="text-[11px] font-mono text-tx-text">{p.skinLabel}</p>
+        <p className="text-[9px] font-mono text-tx-dim mt-0.5">
+          PERP · {p.openedAt.toLocaleDateString()}
+          <span className="ml-1 text-tx-green/50">· on-chain</span>
+        </p>
+      </td>
+      <td className="px-4 py-3">
+        <span className={`text-[9px] font-mono uppercase px-2 py-0.5 border ${
+          p.side === 'long'
+            ? 'bg-tx-green/10 border-tx-green/20 text-tx-green'
+            : 'bg-tx-red/10 border-tx-red/20 text-tx-red'
+        }`}>
+          {p.side.toUpperCase()}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-muted tabular-nums">{p.size.toFixed(4)}</td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-dim tabular-nums">
+        ${p.entryPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-text tabular-nums">
+        {markPrice > 0
+          ? `$${mark.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+          : '…'}
+        {nearLiq && <span className="ml-1 text-[10px] text-tx-red font-bold">⚠</span>}
+      </td>
+      <td className={`px-4 py-3 text-[11px] font-mono tabular-nums ${nearLiq ? 'text-tx-red' : 'text-tx-red/50'}`}>
+        ${p.liquidationPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-muted tabular-nums">{p.leverage}×</td>
+      <td className="px-4 py-3">
+        {markPrice > 0 ? (
+          <>
+            <p className={`text-[11px] font-mono font-bold tabular-nums ${pnlPositive ? 'text-tx-green' : 'text-tx-red'}`}>
+              {pnlPositive ? '+' : ''}${unrealizedPnl.toFixed(2)}
+            </p>
+            <p className={`text-[9px] font-mono tabular-nums ${pnlPositive ? 'text-tx-green/60' : 'text-tx-red/60'}`}>
+              ({pnlPositive ? '+' : ''}{unrealizedPnlPct.toFixed(2)}%)
+            </p>
+          </>
+        ) : (
+          <span className="text-[11px] font-mono text-tx-dim">…</span>
+        )}
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-dim tabular-nums">${p.collateral.toFixed(2)}</td>
+      <td className="px-4 py-3">
+        {error ? (
+          <span className="text-[9px] font-mono text-tx-red">{error}</span>
+        ) : confirming ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleConfirmClose}
+              disabled={closing}
+              className="text-[10px] font-mono uppercase text-tx-red bg-tx-red/10 hover:bg-tx-red/20 border border-tx-red/30 px-2.5 py-1 rounded-sm transition-colors disabled:opacity-50"
+            >
+              {closing ? '…' : 'Confirm'}
+            </button>
+            {!closing && (
+              <button onClick={() => setConfirming(false)} className="text-[10px] font-mono text-tx-dim hover:text-tx-muted px-1.5 py-1 rounded-sm transition-colors">
+                ✕
+              </button>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            className="text-[10px] font-mono uppercase tracking-wider text-tx-dim hover:text-tx-text border border-tx-border hover:border-tx-border2 px-3 py-1 rounded-sm transition-colors"
+          >
+            Close
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ── Simulation position row (pure guests) ────────────────────────────────────
+
+function SimPositionRow({ position: p, onClose }: { position: PerpsPosition; onClose: () => void }) {
   const pnlPositive = p.unrealizedPnl >= 0;
   const [confirming, setConfirming] = useState(false);
   const nearLiq = p.side === 'long'

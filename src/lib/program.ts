@@ -18,7 +18,7 @@ import { Keypair, PublicKey, SystemProgram, Transaction, type Connection, type C
 import type { WalletContextState } from '@solana/wallet-adapter-react';
 import rawIdl from './idl/cs_skin_futures.json';
 import { COMMITMENT, PROGRAM_ID, USDC_MINT } from './config';
-import { getPriceFeed } from './markets';
+import { getPriceFeed, INDEX_IDS, findPriceFeedPda } from './markets';
 
 // ── SPL constants (avoids @solana/spl-token dependency) ─────────────────────
 
@@ -450,4 +450,113 @@ export async function sendWithdraw(
       systemProgram:          SystemProgram.programId,
     })
     .rpc();
+}
+
+// ── On-chain position reading ─────────────────────────────────────────────────
+
+/** Display name for each on-chain index. */
+const SKIN_LABELS: Record<string, string> = {
+  AWP:   'AWP Index',
+  AK47:  'AK-47 Index',
+  KNIFE: 'Knife Index',
+  GLOVE: 'Glove Index',
+  CS500: 'CS500 Index',
+};
+
+/** skinId formats used by the price service (awp-index, ak47-index, …) */
+export const INDEX_TO_SKIN_ID: Record<string, string> = {
+  AWP:   'awp-index',
+  AK47:  'ak47-index',
+  KNIFE: 'knife-index',
+  GLOVE: 'glove-index',
+  CS500: 'cs500-index',
+};
+
+/** Deserialized on-chain Position account. */
+export interface OnChainPosition {
+  positionPda:      string;
+  skinId:           string;   // INDEX_ID format: 'AWP', 'AK47', …
+  priceSkinId:      string;   // price-service format: 'awp-index', …
+  skinLabel:        string;
+  side:             'long' | 'short';
+  collateral:       number;   // USD
+  size:             number;   // base units
+  notional:         number;   // USD
+  entryPrice:       number;   // USD
+  liquidationPrice: number;   // USD
+  leverage:         number;
+  openedAt:         Date;
+}
+
+const POSITION_DISC = [170, 188, 143, 228, 122, 64, 247, 208];
+
+function readU64Le(data: Uint8Array, offset: number): number {
+  return new BN(Array.from(data.slice(offset, offset + 8)), 'le').toNumber();
+}
+
+/**
+ * Fetch all open positions for `owner` by checking every configured market.
+ * Derives Position PDAs for all 5 markets, batch-fetches, and deserialises
+ * accounts that carry the correct discriminator.
+ */
+export async function fetchOnChainPositions(
+  connection: Connection,
+  owner: PublicKey,
+): Promise<OnChainPosition[]> {
+  const entries = INDEX_IDS.map(indexId => {
+    const priceFeed = findPriceFeedPda(indexId);
+    const market    = findMarketPda(priceFeed);
+    const pda       = findPositionPda(owner, market);
+    return { indexId, pda };
+  });
+
+  const accounts = await connection.getMultipleAccountsInfo(entries.map(e => e.pda));
+
+  const positions: OnChainPosition[] = [];
+  for (let i = 0; i < accounts.length; i++) {
+    const acct = accounts[i];
+    if (!acct || acct.data.length < 138) continue;
+
+    const data = acct.data;
+    if (!POSITION_DISC.every((b, j) => data[j] === b)) continue;
+
+    // Binary layout (IDL Position struct):
+    //   offset  0: discriminator (8)
+    //   offset  8: owner pubkey (32)
+    //   offset 40: market pubkey (32)
+    //   offset 72: is_long bool (1)
+    //   offset 73: collateral u64 (8)
+    //   offset 81: size u64 (8)
+    //   offset 89: notional u64 (8)
+    //   offset 97: entry_price u64 (8)
+    //   offset 105: liquidation_price u64 (8)
+    //   offset 113: opened_at i64 (8)
+    const isLong     = data[72] === 1;
+    const collateral = readU64Le(data, 73)  / 1_000_000;
+    const size       = readU64Le(data, 81)  / 1_000_000;
+    const notional   = readU64Le(data, 89)  / 1_000_000;
+    const entryPrice = readU64Le(data, 97)  / 1_000_000;
+    const liqPrice   = readU64Le(data, 105) / 1_000_000;
+    const openedAt   = readU64Le(data, 113);  // Unix seconds
+
+    const { indexId, pda } = entries[i];
+    const leverage = collateral > 0 ? Math.round(notional / collateral) : 1;
+
+    positions.push({
+      positionPda:      pda.toBase58(),
+      skinId:           indexId,
+      priceSkinId:      INDEX_TO_SKIN_ID[indexId] ?? indexId,
+      skinLabel:        SKIN_LABELS[indexId]       ?? indexId,
+      side:             isLong ? 'long' : 'short',
+      collateral,
+      size,
+      notional,
+      entryPrice,
+      liquidationPrice: liqPrice,
+      leverage,
+      openedAt:         new Date(openedAt * 1_000),
+    });
+  }
+
+  return positions;
 }

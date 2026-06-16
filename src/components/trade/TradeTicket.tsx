@@ -214,7 +214,9 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setShowReview(false);
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
-        openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58() });
+        // Pass vaultBalance as override so the store guard uses the live on-chain
+        // balance — not the stale simulation usdcBalance — when recording the position.
+        openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58(), balanceOverride: vaultBalance ?? availBalance });
         fetchUserAccountBalance(connection, publicKey)
           .then(b => { if (b !== null) setVaultBalance(b); })
           .catch(() => {});
@@ -256,7 +258,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setShowReview(false);
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
-        openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58() });
+        openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58(), balanceOverride: vaultBalance ?? availBalance });
         fetchUserAccountBalance(connection, owner)
           .then(b => { if (b !== null) setVaultBalance(b); })
           .catch(() => {});
