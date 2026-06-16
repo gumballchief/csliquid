@@ -76,26 +76,34 @@ export default function AirdropSyncer() {
           return;
         }
 
-        const res  = await fetch('/api/airdrop', {
+        const res = await fetch('/api/airdrop', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ wallet: signerAddress }),
         });
-        const data = await res.json() as {
-          success?: boolean;
-          tx?: string;
-          already?: boolean;
-          error?: string;
-        };
+
+        // Parse response in its own try/catch — if the server returned HTML
+        // (crash page), res.json() throws and we leave sessionStorage unset
+        // so the next page load retries.
+        let data: { success?: boolean; tx?: string; already?: boolean; error?: string; code?: string };
+        try {
+          data = await res.json();
+        } catch {
+          return;
+        }
 
         if (cancelled) return;
 
         if (data.already) {
+          // Already airdropped — mark done so we stop checking
           if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(sessionKey, 'done');
           return;
         }
+
+        // On any error, leave sessionStorage unset so the next page load retries
         if (!data.success || !data.tx) return;
 
+        // Success — mark done before any further async work
         if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(sessionKey, 'done');
 
         // Session wallet: auto-deposit into vault so AVAIL shows $10,000 immediately
