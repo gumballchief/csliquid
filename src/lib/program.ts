@@ -510,7 +510,18 @@ export async function fetchOnChainPositions(
     return { indexId, pda };
   });
 
+  console.log('[positions] owner:', owner.toBase58());
+  console.log('[positions] PDAs:', entries.map(e => `${e.indexId}=${e.pda.toBase58()}`));
   const accounts = await connection.getMultipleAccountsInfo(entries.map(e => e.pda));
+
+  entries.forEach((e, i) => {
+    const acct = accounts[i];
+    if (acct) {
+      console.log(`[positions] ${e.indexId} found ${acct.data.length}b disc=${JSON.stringify(Array.from(acct.data.slice(0, 8)))}`);
+    } else {
+      console.log(`[positions] ${e.indexId} — no account`);
+    }
+  });
 
   const positions: OnChainPosition[] = [];
   for (let i = 0; i < accounts.length; i++) {
@@ -518,7 +529,10 @@ export async function fetchOnChainPositions(
     if (!acct || acct.data.length < 138) continue;
 
     const data = acct.data;
-    if (!POSITION_DISC.every((b, j) => data[j] === b)) continue;
+    if (!POSITION_DISC.every((b, j) => data[j] === b)) {
+      console.log(`[positions] ${entries[i].indexId} discriminator mismatch: got ${JSON.stringify(Array.from(data.slice(0,8)))} expected ${JSON.stringify(POSITION_DISC)}`);
+      continue;
+    }
 
     // Binary layout (IDL Position struct):
     //   offset  0: discriminator (8)

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useAuth } from '@/contexts/AuthContext';
@@ -43,9 +43,18 @@ export default function PortfolioPage() {
   const [markPrices,      setMarkPrices]      = useState<Record<string, number>>({});
   const [fetchingPos,     setFetchingPos]     = useState(false);
 
-  const generatedPubkey = user?.type === 'generated' ? new PublicKey(user.address) : null;
+  const generatedPubkey = useMemo(
+    () => user?.type === 'generated' ? new PublicKey(user.address) : null,
+    [user],
+  );
   const signerPubkey    = (connected && publicKey) ? publicKey : generatedPubkey;
   const isRealWallet    = signerPubkey !== null;
+  const [mounted, setMounted] = useState(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setMounted(true); }, []);
+  // Gate wallet-dependent JSX behind mounted so SSR and first client render match
+  // (SSR: user=null → isRealWallet=false; client: user.type='generated' → isRealWallet=true)
+  const showOnChain = mounted && isRealWallet;
 
   // Simulation store (pure guests only)
   const storePositions = usePositionsStore(s => s.positions);
@@ -132,7 +141,7 @@ export default function PortfolioPage() {
   }, [connected, publicKey, program, user, connection, addToast, refreshPositions]);
 
   // Decide which positions to display
-  const availBalance = isRealWallet ? (vaultBalance ?? 0) : usdcBalance;
+  const availBalance = showOnChain ? (vaultBalance ?? 0) : usdcBalance;
 
   // Summary stats from on-chain positions + live prices
   const totalOnChainPnl = onChainPositions.reduce((sum, p) => {
@@ -144,10 +153,10 @@ export default function PortfolioPage() {
   }, 0);
   const totalOnChainMargin = onChainPositions.reduce((s, p) => s + p.collateral, 0);
 
-  const totalPnl   = isRealWallet ? totalOnChainPnl  : totalStorePnl;
-  const marginUsed = isRealWallet ? totalOnChainMargin : storeMargin;
+  const totalPnl   = showOnChain ? totalOnChainPnl  : totalStorePnl;
+  const marginUsed = showOnChain ? totalOnChainMargin : storeMargin;
   const pnlPositive = totalPnl >= 0;
-  const positionCount = isRealWallet ? onChainPositions.length : storePositions.length;
+  const positionCount = showOnChain ? onChainPositions.length : storePositions.length;
 
   return (
     <main className="max-w-7xl mx-auto px-4 py-5">
@@ -156,7 +165,7 @@ export default function PortfolioPage() {
           <h1 className="text-[13px] font-mono uppercase tracking-[0.08em] text-tx-text">Portfolio</h1>
           <p className="text-[11px] font-mono text-tx-muted mt-0.5">Open positions, orders, and trade history</p>
         </div>
-        {!isRealWallet && (
+        {!showOnChain && (
           <button
             onClick={() => { if (confirm('Reset account to $5,000 and clear all positions?')) resetAccount(); }}
             className="text-[10px] font-mono uppercase tracking-wider text-tx-dim hover:text-tx-muted border border-tx-border hover:border-tx-border2 px-3 py-1.5 rounded-sm transition-colors"
@@ -164,7 +173,7 @@ export default function PortfolioPage() {
             Reset Account
           </button>
         )}
-        {isRealWallet && (
+        {showOnChain && (
           <button
             onClick={() => refreshPositions()}
             disabled={fetchingPos}
@@ -221,7 +230,7 @@ export default function PortfolioPage() {
 
       {/* Positions */}
       {tab === 'positions' && (
-        isRealWallet ? (
+        showOnChain ? (
           onChainPositions.length === 0 ? (
             <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">
               {fetchingPos ? 'Loading positions…' : 'No open positions'}

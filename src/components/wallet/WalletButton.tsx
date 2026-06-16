@@ -75,6 +75,9 @@ export default function WalletButton() {
   const [showSave,    setShowSave]    = useState(false);
   const [showSend,    setShowSend]    = useState(false);
   const [showSwap,    setShowSwap]    = useState(false);
+  const [mounted,     setMounted]     = useState(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setMounted(true); }, []);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -179,6 +182,19 @@ export default function WalletButton() {
     v === 'loading' ? '…' : v === null ? '—' : v.toFixed(decimals);
   const balanceDisplay = `${solFmt(balance)} SOL`;
   const usdcDisplay    = `${solFmt(usdcBalance, 2)} USDC`;
+
+  // ── Before hydration — return same markup as SSR to avoid 418/423/425 ────────
+  if (!mounted) {
+    return (
+      <button
+        onClick={() => setVisible(true)}
+        className="px-4 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[#0a0b0d] hover:bg-[#00e87a] transition-colors active:scale-[0.98]"
+        style={{ background: '#00ff88', borderRadius: 3 }}
+      >
+        Connect Wallet
+      </button>
+    );
+  }
 
   // ── Extension / hardware wallet ─────────────────────────────────────────────
   if (connected && publicKey) {
