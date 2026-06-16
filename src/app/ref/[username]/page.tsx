@@ -9,21 +9,35 @@ export default function RefLandingPage() {
 
   useEffect(() => {
     async function activate() {
+      console.log('[ref] landing for username:', username);
       try {
-        const res = await fetch(`/api/referral/lookup?username=${encodeURIComponent(username)}`);
-        const { wallet } = await res.json() as { wallet: string | null };
+        const lookupUrl = `/api/referral/lookup?username=${encodeURIComponent(username)}`;
+        console.log('[ref] fetching lookup:', lookupUrl);
+        const res  = await fetch(lookupUrl);
+        const data = await res.json() as { wallet: string | null };
+        console.log('[ref] lookup result:', data);
 
+        const { wallet } = data;
         if (wallet) {
-          // 30-day cookie — tracked by the trade execution code
-          document.cookie = `referrer=${wallet}; max-age=2592000; path=/; SameSite=Lax`;
-          // Increment click counter (fire-and-forget)
+          // 30-day cookie — read by the trade execution code to credit the referrer
+          document.cookie = `referrer=${encodeURIComponent(wallet)}; max-age=2592000; path=/; SameSite=Lax`;
+          console.log('[ref] cookie set, referrer wallet:', wallet);
+
+          // Increment click counter
           fetch('/api/referral/click', {
-            method: 'POST',
+            method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wallet }),
-          }).catch(() => {});
+            body:    JSON.stringify({ wallet }),
+          })
+            .then(r => r.json())
+            .then(d => console.log('[ref] click tracked:', d))
+            .catch(e => console.error('[ref] click track error:', e));
+        } else {
+          console.warn('[ref] no wallet found for username:', username);
         }
-      } catch {}
+      } catch (err) {
+        console.error('[ref] activate error:', err);
+      }
 
       router.replace('/');
     }

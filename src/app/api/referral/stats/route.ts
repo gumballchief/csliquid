@@ -10,21 +10,25 @@ function kvUnavailable(): boolean {
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
   if (kvUnavailable()) {
+    console.warn('[referral/stats] KV not configured');
     return NextResponse.json({ registered: false });
   }
 
   const wallet = req.nextUrl.searchParams.get('wallet');
+  console.log('[referral/stats] wallet:', wallet);
   if (!wallet) {
     return NextResponse.json({ error: 'Missing wallet' }, { status: 400 });
   }
 
   try {
     const data = await kv.get<ReferrerData>(`referrer:${wallet}`);
+    console.log('[referral/stats] data:', data ? `username=${data.username} referrals=${data.referrals} fees=${data.fees}` : 'not found');
     if (!data) {
       return NextResponse.json({ registered: false });
     }
     return NextResponse.json({ ...data, registered: true });
-  } catch {
+  } catch (err) {
+    console.error('[referral/stats] KV error:', err);
     return NextResponse.json({ registered: false });
   }
 }

@@ -13,6 +13,7 @@ function kvUnavailable(): boolean {
 // Referrer earns 10% of the trading fee.
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (kvUnavailable()) {
+    console.warn('[referral/track] KV not configured — skipping');
     return NextResponse.json({ ok: true });
   }
 
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { referrerWallet, tradeVolume = 0, fee = 0 } = body;
+  console.log('[referral/track] referrerWallet:', referrerWallet, 'tradeVolume:', tradeVolume, 'fee:', fee);
   if (!referrerWallet) return NextResponse.json({ ok: true });
 
   const referralFee = fee * 0.1;
@@ -31,6 +33,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   try {
     const data = await kv.get<ReferrerData>(refKey);
+    console.log('[referral/track] existing data:', data ? `username=${data.username} fees=${data.fees}` : 'not found');
+
     if (data) {
       const updated: ReferrerData = {
         ...data,
@@ -42,8 +46,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         kv.set(refKey, updated),
         kv.zincrby('leaderboard:referral', referralFee, referrerWallet),
       ]);
+      console.log('[referral/track] credited referralFee:', referralFee, 'total fees now:', updated.fees);
+    } else {
+      console.warn('[referral/track] referrer wallet not registered:', referrerWallet);
     }
-  } catch {}
+  } catch (err) {
+    console.error('[referral/track] KV error:', err);
+    return NextResponse.json({ error: 'KV error', ok: false }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }
