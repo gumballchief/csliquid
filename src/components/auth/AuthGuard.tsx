@@ -1,30 +1,75 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { useAuth } from '@/contexts/AuthContext';
+import { type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import Logo from '@/components/layout/Logo';
 
-// Pages anyone can visit without being logged in
-const PUBLIC_PATHS = new Set(['/', '/login', '/signup', '/blocked']);
+// Path prefixes that require a connected wallet
+const PROTECTED_PREFIXES = [
+  '/trade',
+  '/portfolio',
+  '/pool',
+  '/stats',
+  '/leaderboard',
+  '/referral',
+  '/prize-pool',
+];
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    p => pathname === p || pathname.startsWith(p + '/'),
+  );
+}
+
+function WalletGate() {
+  const { setVisible } = useWalletModal();
+  return (
+    <div
+      className="flex items-center justify-center"
+      style={{ minHeight: 'calc(100vh - 2.5rem)' }}
+    >
+      <div
+        className="flex flex-col items-center gap-6 px-8 py-10 text-center mx-4"
+        style={{
+          background: '#111214',
+          border: '1px solid #1e2025',
+          borderRadius: 6,
+          maxWidth: 360,
+          width: '100%',
+        }}
+      >
+        <Logo size={28} />
+
+        <div className="space-y-2">
+          <p className="font-mono text-[13px] font-bold uppercase tracking-[0.08em] text-[#e8eaed]">
+            Connect your wallet to continue
+          </p>
+          <p className="font-mono text-[11px] text-[#6b7280] leading-relaxed">
+            A Solana wallet is required to access this page.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setVisible(true)}
+          className="w-full py-2.5 font-mono text-[12px] font-bold uppercase tracking-[0.1em] text-[#0a0b0d] hover:bg-[#00e87a] transition-colors active:scale-[0.98]"
+          style={{ background: '#00ff88', borderRadius: 3 }}
+        >
+          Connect Wallet
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
-  const { isAuthenticated, hydrated } = useAuth();
+  const { connected } = useWallet();
   const pathname = usePathname();
-  const router   = useRouter();
 
-  const isPublic = PUBLIC_PATHS.has(pathname);
-
-  useEffect(() => {
-    if (hydrated && !isAuthenticated && !isPublic) {
-      router.replace('/login');
-    }
-  }, [hydrated, isAuthenticated, isPublic, router]);
-
-  // Suppress content flash while localStorage hydrates
-  if (!hydrated) return null;
-
-  // Redirect in-flight — render nothing so protected content is never visible
-  if (!isAuthenticated && !isPublic) return null;
+  if (!connected && isProtected(pathname)) {
+    return <WalletGate />;
+  }
 
   return <>{children}</>;
 }
