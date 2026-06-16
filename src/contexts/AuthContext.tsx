@@ -38,14 +38,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const raw      = localStorage.getItem(STORAGE_KEY);
+      const raw        = localStorage.getItem(STORAGE_KEY);
       const keypairB58 = localStorage.getItem(KEYPAIR_KEY);
 
       if (raw) {
         const parsed = JSON.parse(raw) as AuthUser;
-        // If stored as generated but keypair was cleared, treat as unauthenticated
+
         if (parsed.type === 'generated' && !keypairB58) {
+          // Keypair was cleared — treat as unauthenticated
           localStorage.removeItem(STORAGE_KEY);
+
+        } else if (parsed.type === 'email') {
+          // Migrate old email-only records: give them a session wallet
+          const migrateOrGenerate = (): string => {
+            if (keypairB58) {
+              try { return Keypair.fromSecretKey(decodeBase58(keypairB58)).publicKey.toBase58(); } catch {}
+            }
+            const kp = Keypair.generate();
+            localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
+            return kp.publicKey.toBase58();
+          };
+          const address = migrateOrGenerate();
+          const migrated: AuthUser = { type: 'generated', address };
+          setUser(migrated);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+
         } else if (parsed.type === 'wallet' && keypairB58) {
           // Phantom auto-connect overwrote the session wallet auth — restore it.
           // (Explicit Phantom logins clear guest_keypair via logout() first, so
@@ -83,7 +100,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     else      localStorage.removeItem(STORAGE_KEY);
   }
 
-  const loginWithEmail  = useCallback((email: string)  => persist({ type: 'email',  email }),   []);
+  const loginWithEmail = useCallback((_email: string) => {
+    // Email users get the same session keypair as guest mode — reuse if present
+    const existing = localStorage.getItem(KEYPAIR_KEY);
+    let address: string;
+    if (existing) {
+      try {
+        address = Keypair.fromSecretKey(decodeBase58(existing)).publicKey.toBase58();
+      } catch {
+        const kp = Keypair.generate();
+        localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
+        address = kp.publicKey.toBase58();
+      }
+    } else {
+      const kp = Keypair.generate();
+      localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
+      address = kp.publicKey.toBase58();
+    }
+    persist({ type: 'generated', address });
+  }, []);
   const loginWithWallet = useCallback((address: string) => persist({ type: 'wallet', address }), []);
 
   const loginAsGuest = useCallback(() => {

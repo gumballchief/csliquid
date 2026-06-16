@@ -17,7 +17,8 @@ import {
   sendOpenPosition, sendOpenPositionKeypair,
   sendClosePosition, sendClosePositionKeypair,
   extractErrorMessage, findMarketPda, findPositionPda,
-  sendDeposit, sendWithdraw, fetchUserAccountBalance,
+  sendDeposit, sendWithdraw, sendDepositKeypair, sendWithdrawKeypair,
+  fetchUserAccountBalance,
 } from '@/lib/program';
 import { USDC_MINT, PROGRAM_ID } from '@/lib/config';
 import { isMarketConfigured, getPriceFeed, findPriceFeedPda } from '@/lib/markets';
@@ -837,6 +838,7 @@ function DepositModal({
   onSuccess: (newVaultBalance: number) => void;
 }) {
   const { connection } = useConnection();
+  const { user }       = useAuth();
   const [tab,          setTab]        = useState<'deposit' | 'withdraw'>('deposit');
   const [amount,       setAmount]     = useState('');
   const [walletUsdc,   setWalletUsdc] = useState<number | null>(null);
@@ -844,10 +846,16 @@ function DepositModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback,     setFeedback]   = useState<{ ok: boolean; msg: string } | null>(null);
 
+  // Resolve the signer's public key across Phantom and session wallets
+  const isSessionWallet = user?.type === 'generated';
+  const effectivePubkey: PublicKey | null =
+    publicKey ??
+    (isSessionWallet && user?.address ? new PublicKey(user.address) : null);
+
   // Fetch both wallet USDC and current vault balance on open
   useEffect(() => {
-    if (!publicKey) return;
-    connection.getParsedTokenAccountsByOwner(publicKey, { mint: USDC_MINT })
+    if (!effectivePubkey) return;
+    connection.getParsedTokenAccountsByOwner(effectivePubkey, { mint: USDC_MINT })
       .then(res => {
         const accts = res.value;
         setWalletUsdc(accts.length > 0
@@ -855,28 +863,38 @@ function DepositModal({
           : 0);
       })
       .catch(() => setWalletUsdc(0));
-    fetchUserAccountBalance(connection, publicKey)
+    fetchUserAccountBalance(connection, effectivePubkey)
       .then(b => setDeposited(b ?? 0))
       .catch(() => setDeposited(0));
-  }, [publicKey, connection]);
+  }, [effectivePubkey?.toBase58(), connection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxAmount = tab === 'deposit' ? (walletUsdc ?? 0) : (deposited ?? 0);
+  const hasWallet = !!(program && publicKey) || isSessionWallet;
 
   async function handleSubmit() {
     const val = parseFloat(amount);
-    if (!val || val <= 0 || !program || !publicKey) return;
+    if (!val || val <= 0 || !effectivePubkey) return;
     setIsSubmitting(true);
     setFeedback(null);
     try {
-      if (tab === 'deposit') {
-        await sendDeposit(program, publicKey, val);
+      if (program && publicKey) {
+        // Phantom path
+        if (tab === 'deposit') await sendDeposit(program, publicKey, val);
+        else                   await sendWithdraw(program, publicKey, val);
+      } else if (isSessionWallet) {
+        // Session keypair path
+        const kpRaw = localStorage.getItem('guest_keypair');
+        if (!kpRaw) throw new Error('Session keypair not found — try logging out and back in');
+        const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
+        if (tab === 'deposit') await sendDepositKeypair(connection, signer, val);
+        else                   await sendWithdrawKeypair(connection, signer, val);
       } else {
-        await sendWithdraw(program, publicKey, val);
+        throw new Error('No wallet connected');
       }
       // Refresh both balances after tx confirms
       const [vaultRes, tokenRes] = await Promise.allSettled([
-        fetchUserAccountBalance(connection, publicKey),
-        connection.getParsedTokenAccountsByOwner(publicKey, { mint: USDC_MINT }),
+        fetchUserAccountBalance(connection, effectivePubkey),
+        connection.getParsedTokenAccountsByOwner(effectivePubkey, { mint: USDC_MINT }),
       ]);
       const newVault = vaultRes.status === 'fulfilled' ? (vaultRes.value ?? 0) : deposited ?? 0;
       let newWalletBal = walletUsdc ?? 0;
@@ -901,7 +919,7 @@ function DepositModal({
   }
 
   const val       = parseFloat(amount) || 0;
-  const canSubmit = !isSubmitting && !!program && !!publicKey && val > 0 && val <= maxAmount;
+  const canSubmit = !isSubmitting && hasWallet && val > 0 && val <= maxAmount;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -952,9 +970,9 @@ function DepositModal({
         </div>
 
         <div className="p-4 space-y-3">
-          {!program || !publicKey ? (
+          {!hasWallet ? (
             <p className="text-[11px] font-mono text-tx-dim text-center py-3">
-              Connect your Phantom wallet to deposit USDC.
+              Connect a wallet to deposit USDC.
             </p>
           ) : (
             <>

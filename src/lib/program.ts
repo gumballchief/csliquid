@@ -489,6 +489,43 @@ export async function sendWithdraw(
     .rpc();
 }
 
+/**
+ * Like sendWithdraw but signs with a local Keypair (generated/session wallets).
+ */
+export async function sendWithdrawKeypair(
+  connection: Connection,
+  signer: Keypair,
+  amountUsd: number,
+): Promise<string> {
+  const owner = signer.publicKey;
+  const walletLike = {
+    publicKey:           owner,
+    signTransaction:     async (tx: Transaction) => { tx.partialSign(signer); return tx; },
+    signAllTransactions: async (txs: Transaction[]) => {
+      txs.forEach(t => t.partialSign(signer));
+      return txs;
+    },
+  };
+  const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
+  const prog     = new Program(rawIdl as unknown as Idl, provider);
+
+  return prog.methods
+    .withdraw(toUsdcLamports(amountUsd))
+    .accounts({
+      owner,
+      userAccount:            findUserAccountPda(owner),
+      userUsdcAccount:        getUserUsdcAta(owner),
+      vaultToken:             findVaultTokenPda(),
+      vaultData:              findVaultDataPda(),
+      vaultAuthority:         findVaultAuthorityPda(),
+      usdcMint:               USDC_MINT,
+      tokenProgram:           TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
+      systemProgram:          SystemProgram.programId,
+    })
+    .rpc();
+}
+
 // ── On-chain position reading ─────────────────────────────────────────────────
 
 /** Display name for each on-chain index. */
