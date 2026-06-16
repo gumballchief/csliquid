@@ -3,18 +3,7 @@ import localFont from 'next/font/local';
 import './globals.css';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import dynamic from 'next/dynamic';
-const WalletContextProvider = dynamic(
-  () => import('@/contexts/WalletContextProvider'),
-  { ssr: false },
-);
-import { AuthProvider } from '@/contexts/AuthContext';
-import AuthGuard from '@/components/auth/AuthGuard';
-import Header from '@/components/layout/Header';
-import PriceTicker from '@/components/layout/PriceTicker';
-import TxToastContainer from '@/components/ui/TxToast';
-import AirdropSyncer from '@/components/ui/AirdropSyncer';
-import TosModal from '@/components/TosModal';
+import ClientLayout from './ClientLayout';
 
 const geistSans = localFont({
   src: './fonts/GeistVF.woff',
@@ -48,18 +37,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <style>{`html,body{background:#0a0b0d;color:#e8eaed}`}</style>
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-tx-bg text-tx-text min-h-screen`} style={{ backgroundColor: '#0a0b0d' }}>
-        <WalletContextProvider>
-          <AuthProvider>
-            <AirdropSyncer />
-            <TosModal />
-            <PriceTicker />
-            <Header />
-            <AuthGuard>
-              {children}
-            </AuthGuard>
-            <TxToastContainer />
-          </AuthProvider>
-        </WalletContextProvider>
+        <ClientLayout>
+          {children}
+        </ClientLayout>
         <Analytics />
         <SpeedInsights />
       </body>
