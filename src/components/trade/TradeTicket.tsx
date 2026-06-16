@@ -29,6 +29,39 @@ import { Skin } from '@/types';
 // Anchor Position account discriminator — sha256("account:Position")[0..8]
 const POSITION_DISC = [170, 188, 143, 228, 122, 64, 247, 208];
 
+const SKIN_TO_MARKET: Record<string, string> = {
+  'awp-index':   'AWP',
+  'ak47-index':  'AK47',
+  'knife-index': 'KNIFE',
+  'glove-index': 'GLOVE',
+  'cs500-index': 'CS500',
+};
+function skinIdToMarket(skinId: string): string {
+  return SKIN_TO_MARKET[skinId] ?? skinId.toUpperCase();
+}
+
+// Fire-and-forget trade DB recording helpers — never block the trade UI.
+function fireRecordOpen(data: {
+  wallet: string; market: string; direction: 'LONG' | 'SHORT';
+  size: number; collateral: number; leverage: number;
+  entry_price: number; liq_price: number; notional: number; fee: number; tx: string;
+}): void {
+  fetch('/api/trades/record-open', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {});
+}
+
+function fireRecordClose(data: {
+  wallet: string; market: string; close_tx: string;
+  exit_price: number; realized_pnl: number;
+}): void {
+  fetch('/api/trades/record-close', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {});
+}
+
 // Reads the referrer cookie set by /ref/[username] and pings /api/referral/track.
 // Fire-and-forget — never blocks trade UI.
 function fireReferralTrack(tradeVolume: number, fee: number): void {
@@ -297,6 +330,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
         fireReferralTrack(notional, fee);
+        fireRecordOpen({ wallet: publicKey.toBase58(), market: skinIdToMarket(skinId), direction: side === 'long' ? 'LONG' : 'SHORT', size, collateral: col, leverage, entry_price: entryPrice, liq_price: liqPrice, notional, fee, tx: sig });
         // Pass vaultBalance as override so the store guard uses the live on-chain
         // balance — not the stale simulation usdcBalance — when recording the position.
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58(), balanceOverride: vaultBalance ?? availBalance });
@@ -342,6 +376,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
         fireReferralTrack(notional, fee);
+        fireRecordOpen({ wallet: owner.toBase58(), market: skinIdToMarket(skinId), direction: side === 'long' ? 'LONG' : 'SHORT', size, collateral: col, leverage, entry_price: entryPrice, liq_price: liqPrice, notional, fee, tx: sig });
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58(), balanceOverride: vaultBalance ?? availBalance });
         fetchUserAccountBalance(connection, owner)
           .then(b => { if (b !== null) setVaultBalance(b); })
@@ -385,17 +420,28 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     setClosingExisting(true);
     setFeedback(null);
     try {
+      let closeSig: string | null = null;
+      let closingWallet: string | null = null;
       if (connected && publicKey && program && isMarketConfigured(skinId)) {
-        const sig = await sendClosePosition(program, publicKey, skinId);
-        addToast({ txSig: sig, action: 'close', skinName, side: existingPos.side });
+        closeSig = await sendClosePosition(program, publicKey, skinId);
+        closingWallet = publicKey.toBase58();
+        addToast({ txSig: closeSig, action: 'close', skinName, side: existingPos.side });
       } else if (user?.type === 'generated') {
         const kpRaw = localStorage.getItem('guest_keypair');
         if (!kpRaw) throw new Error('No trading keypair found');
         const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
-        const sig    = await sendClosePositionKeypair(connection, signer, skinId);
-        addToast({ txSig: sig, action: 'close', skinName, side: existingPos.side });
+        closeSig = await sendClosePositionKeypair(connection, signer, skinId);
+        closingWallet = signer.publicKey.toBase58();
+        addToast({ txSig: closeSig, action: 'close', skinName, side: existingPos.side });
       } else {
         throw new Error('Wallet not available');
+      }
+      if (closeSig && closingWallet) {
+        const exitPrice   = markPrice;
+        const realizedPnl = existingPos.side === 'long'
+          ? (exitPrice - existingPos.entryPrice) * existingPos.size
+          : (existingPos.entryPrice - exitPrice) * existingPos.size;
+        fireRecordClose({ wallet: closingWallet, market: skinIdToMarket(skinId), close_tx: closeSig, exit_price: exitPrice, realized_pnl: realizedPnl });
       }
       setExistingPos(null);
       setCloseConfirm(false);
