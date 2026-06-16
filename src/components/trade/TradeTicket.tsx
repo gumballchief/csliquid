@@ -25,6 +25,7 @@ import { isMarketConfigured, getPriceFeed, findPriceFeedPda } from '@/lib/market
 import { calcLiquidationPrice, calcNotional, calcTakerFee } from '@/lib/perps';
 import { useMarketPrice } from '@/hooks/useMarketPrice';
 import { Skin } from '@/types';
+import type { ChartPosition } from './PriceChart';
 
 // Anchor Position account discriminator — sha256("account:Position")[0..8]
 const POSITION_DISC = [170, 188, 143, 228, 122, 64, 247, 208];
@@ -91,10 +92,11 @@ interface ExistingPosition {
 }
 
 interface Props {
-  skinId:    string;
-  skin:      Skin;
-  skinName:  string;
-  markPrice: number;
+  skinId:             string;
+  skin:               Skin;
+  skinName:           string;
+  markPrice:          number;
+  onPositionChange?:  (pos: ChartPosition | null) => void;
 }
 
 type OrderType = 'market' | 'limit' | 'stop';
@@ -109,7 +111,7 @@ function fmtPrice(n: number) {
 const inputCls = 'w-full bg-tx-bg border border-tx-border2 rounded-sm pl-5 pr-3 py-2 text-[12px] text-tx-text placeholder-tx-dim font-mono tabular-nums focus:outline-none focus:border-tx-muted transition-colors';
 const labelCls = 'text-[10px] font-mono uppercase tracking-[0.08em] text-tx-dim';
 
-export default function TradeTicket({ skinId, skin, skinName, markPrice: staticPrice }: Props) {
+export default function TradeTicket({ skinId, skin, skinName, markPrice: staticPrice, onPositionChange }: Props) {
   const { markPrice: livePrice } = useMarketPrice(skinId);
   const markPrice = livePrice > 0 ? livePrice : staticPrice;
   const { connected, publicKey } = useWallet();
@@ -270,6 +272,21 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     return () => { cancelled = true; clearInterval(timer); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signerPubkey, skinId, connection]);
+
+  // Notify chart of position changes so it can draw / remove the entry price line
+  useEffect(() => {
+    if (!onPositionChange) return;
+    if (existingPos) {
+      onPositionChange({
+        direction:  existingPos.side === 'long' ? 'LONG' : 'SHORT',
+        entryPrice: existingPos.entryPrice,
+        liqPrice:   existingPos.liquidationPrice,
+        size:       existingPos.size,
+      });
+    } else {
+      onPositionChange(null);
+    }
+  }, [existingPos, onPositionChange]);
 
   // AVAIL = vault balance for any keyed user; simulated store balance for pure guests
   const availBalance = signerPubkey ? (vaultBalance ?? 0) : usdcBalance;

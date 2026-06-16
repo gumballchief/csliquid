@@ -1,8 +1,5 @@
 import LivePriceHeader from '@/components/trade/LivePriceHeader';
-import LivePriceChart from '@/components/trade/LivePriceChart';
-import TradeTicket from '@/components/trade/TradeTicket';
-import Orderbook from '@/components/trade/Orderbook';
-import RecentTrades from '@/components/trade/RecentTrades';
+import TradePageClient from '@/components/trade/TradePageClient';
 import OpenPositionsTable from '@/components/trade/OpenPositionsTable';
 import { notFound } from 'next/navigation';
 import { Skin } from '@/types';
@@ -37,16 +34,12 @@ export default function TradePage({ params }: Props) {
         <LivePriceHeader skinId={params.skin} skinName={meta.name} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-3 items-start">
-
-        <LivePriceChart skinId={params.skin} skinName={meta.name} />
-
-        <div className="flex flex-col gap-3">
-          <TradeTicket skinId={params.skin} skin={skin} skinName={skinTitle} markPrice={0} />
-          <Orderbook orderbook={{ asks: [], bids: [] }} markPrice={0} />
-          <RecentTrades trades={[]} />
-        </div>
-      </div>
+      <TradePageClient
+        skinId={params.skin}
+        skinName={meta.name}
+        skinTitle={skinTitle}
+        skin={skin}
+      />
 
       <OpenPositionsTable />
     </main>

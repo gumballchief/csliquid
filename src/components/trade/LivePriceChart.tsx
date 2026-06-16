@@ -1,14 +1,15 @@
 'use client';
 
 import { useMarketPrice } from '@/hooks/useMarketPrice';
-import PriceChart from './PriceChart';
+import PriceChart, { type ChartPosition } from './PriceChart';
 
 interface Props {
-  skinId:   string;
-  skinName: string;
+  skinId:        string;
+  skinName:      string;
+  openPosition?: ChartPosition | null;
 }
 
-export default function LivePriceChart({ skinId, skinName }: Props) {
+export default function LivePriceChart({ skinId, skinName, openPosition }: Props) {
   const { markPrice, histories } = useMarketPrice(skinId);
 
   return (
@@ -16,6 +17,7 @@ export default function LivePriceChart({ skinId, skinName }: Props) {
       markPrice={markPrice}
       skinName={skinName}
       externalHistories={histories}
+      openPosition={openPosition}
     />
   );
 }
