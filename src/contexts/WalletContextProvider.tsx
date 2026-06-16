@@ -28,7 +28,8 @@ function WalletStateSyncer() {
       const raw = localStorage.getItem('csliquid_auth');
       if (raw) {
         const parsed = JSON.parse(raw) as { type?: string; address?: string };
-        if (parsed.type === 'generated' && parsed.address) {
+        // 'email' is a legacy type — AuthContext migrates it to 'generated' on next hydration
+        if ((parsed.type === 'generated' || parsed.type === 'email') && parsed.address) {
           loadWallet(parsed.address);
           return;
         }
