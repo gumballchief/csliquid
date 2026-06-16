@@ -112,8 +112,8 @@ export default function StatsPage() {
   const [oracleData,    setOracleData]    = useState<Record<string, OracleStatus>>({});
   const [priceHistory,  setPriceHistory]  = useState<Record<string, PriceHistory>>({});
   const [activeMarket,  setActiveMarket]  = useState<string>('awp-index');
-  const [uptimeStart]                     = useState(() => Date.now());
-  const [now,           setNow]           = useState(() => Date.now());
+  const [uptimeStart,   setUptimeStart]   = useState(0);
+  const [now,           setNow]           = useState(0);
   const prices = useAllPrices();
 
   useEffect(() => {
@@ -148,6 +148,9 @@ export default function StatsPage() {
   }, []);
 
   useEffect(() => {
+    const t = Date.now();
+    setUptimeStart(t);
+    setNow(t);
     const id = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(id);
   }, []);
@@ -325,7 +328,7 @@ export default function StatsPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-tx-border">
           {[
-            { label: 'Trade Fee',              value: '2.00%'       },
+            { label: 'Trade Fee',              value: '0.05%'       },
             { label: 'Liq. Threshold',         value: '5%'          },
             { label: 'Base Funding Rate',      value: '0.24%/24h'   },
             { label: 'Insurance Fund Rate',    value: '25%'         },

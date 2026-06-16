@@ -16,21 +16,16 @@ import { getProgram } from '@/lib/program';
  */
 export function useProgram(): Program | null {
   const { connection } = useConnection();
-  const wallet         = useWallet();
+  const wallet = useWallet();
+  const { connected, publicKey, signTransaction, signAllTransactions } = wallet;
 
   return useMemo(() => {
-    if (
-      !wallet.connected ||
-      !wallet.publicKey ||
-      !wallet.signTransaction ||
-      !wallet.signAllTransactions
-    ) {
-      return null;
-    }
+    if (!connected || !publicKey || !signTransaction || !signAllTransactions) return null;
     try {
       return getProgram(connection, wallet);
     } catch {
       return null;
     }
-  }, [connection, wallet]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connection, connected, publicKey, signTransaction, signAllTransactions]);
 }
