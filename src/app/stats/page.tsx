@@ -1,4 +1,4 @@
-'use client';
+'use client'; // client-only: hooks + wallet state
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
