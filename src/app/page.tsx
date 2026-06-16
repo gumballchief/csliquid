@@ -61,9 +61,6 @@ type LiveMarket = {
 
 // ── Landing page ───────────────────────────────────────────────────────────────
 export default function LandingPage() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-
   const awp   = useSkinPrice('awp-index');
   const ak47  = useSkinPrice('ak47-index');
   const knife = useSkinPrice('knife-index');
@@ -80,14 +77,6 @@ export default function LandingPage() {
   useEffect(() => {
     fetch('/api/pool/stats').then(r => r.json()).then(setPool).catch(() => {});
   }, []);
-
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-green-400 font-mono text-sm animate-pulse">LOADING...</div>
-      </div>
-    );
-  }
 
   // Derive live market rows for PickSkinDemo
   const liveMarkets: LiveMarket[] = MARKET_META.map(m => {
