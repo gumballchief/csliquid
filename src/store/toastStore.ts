@@ -12,19 +12,29 @@ export interface TxToast {
   createdAt:   number;
 }
 
+export interface InfoToast {
+  id:        string;
+  message:   string;
+  txSig?:    string;
+  createdAt: number;
+}
+
 interface ToastState {
-  toasts: TxToast[];
-  addToast: (toast: Omit<TxToast, 'id' | 'createdAt'>) => void;
-  removeToast: (id: string) => void;
+  toasts:     TxToast[];
+  infoToasts: InfoToast[];
+  addToast:   (toast: Omit<TxToast, 'id' | 'createdAt'>) => void;
+  removeToast:(id: string) => void;
+  addInfo:    (message: string, txSig?: string) => void;
+  removeInfo: (id: string) => void;
 }
 
 export const useToastStore = create<ToastState>((set) => ({
-  toasts: [],
+  toasts:     [],
+  infoToasts: [],
 
   addToast: (toast) => {
     const id = crypto.randomUUID();
     set((s) => ({ toasts: [...s.toasts, { ...toast, id, createdAt: Date.now() }] }));
-    // Auto-dismiss after 6 seconds
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
     }, 6_000);
@@ -32,4 +42,15 @@ export const useToastStore = create<ToastState>((set) => ({
 
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
+
+  addInfo: (message, txSig) => {
+    const id = crypto.randomUUID();
+    set((s) => ({ infoToasts: [...s.infoToasts, { id, message, txSig, createdAt: Date.now() }] }));
+    setTimeout(() => {
+      set((s) => ({ infoToasts: s.infoToasts.filter((t) => t.id !== id) }));
+    }, 10_000);
+  },
+
+  removeInfo: (id) =>
+    set((s) => ({ infoToasts: s.infoToasts.filter((t) => t.id !== id) })),
 }));

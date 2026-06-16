@@ -9,6 +9,7 @@ import AuthGuard from '@/components/auth/AuthGuard';
 import Header from '@/components/layout/Header';
 import PriceTicker from '@/components/layout/PriceTicker';
 import TxToastContainer from '@/components/ui/TxToast';
+import AirdropSyncer from '@/components/ui/AirdropSyncer';
 import TosModal from '@/components/TosModal';
 
 const geistSans = localFont({
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-tx-bg text-tx-text min-h-screen`} style={{ backgroundColor: '#0a0b0d' }}>
         <WalletContextProvider>
           <AuthProvider>
+            <AirdropSyncer />
             <TosModal />
             <PriceTicker />
             <Header />
