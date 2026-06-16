@@ -32,8 +32,23 @@ const PUSH_INTERVAL_MS  = Number(process.env.PUSH_INTERVAL_MS ?? 60_000);
 
 const PROGRAM_ID = new PublicKey("76QQzNaRCjcF83bf3Bx6XN67eHbthDETKdLSVccfXf9f");
 
-/** All index IDs managed by the oracle. */
-const INDEX_IDS = ["awp-index", "ak47-index", "knife-index", "glove-index"] as const;
+/**
+ * Maps oracle-service index ID (what the HTTP oracle API accepts) to the
+ * on-chain PriceFeed seed (what findProgramAddressSync uses for the PDA).
+ *
+ * The PriceFeed PDAs were created with the short 'AWP' / 'AK47' seeds by
+ * init-awp-market.ts and init-remaining-markets.ts.  The oracle service still
+ * uses the longer 'awp-index' keys internally — so we translate here.
+ */
+const INDEX_MAPPING = [
+  { oracleId: "awp-index",   chainId: "AWP"   },
+  { oracleId: "ak47-index",  chainId: "AK47"  },
+  { oracleId: "knife-index", chainId: "KNIFE" },
+  { oracleId: "glove-index", chainId: "GLOVE" },
+  { oracleId: "cs500-index", chainId: "CS500" },
+] as const;
+
+type IndexEntry = (typeof INDEX_MAPPING)[number];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -96,18 +111,18 @@ function buildProgram(admin: Keypair): anchor.Program {
 async function ensurePriceFeedExists(
   program: anchor.Program,
   admin:   Keypair,
-  indexId: string,
+  entry:   IndexEntry,
 ): Promise<void> {
-  const feedPda = priceFeedPda(indexId);
+  const feedPda = priceFeedPda(entry.chainId);
   const info    = await program.provider.connection.getAccountInfo(feedPda);
 
   if (info) {
     return; // already initialised
   }
 
-  console.log(`[init] Creating PriceFeed for ${indexId} at ${feedPda.toBase58()} ...`);
+  console.log(`[init] Creating PriceFeed for ${entry.chainId} at ${feedPda.toBase58()} ...`);
   await program.methods
-    .initializePriceFeed(indexId)
+    .initializePriceFeed(entry.chainId)
     .accounts({
       authority:     admin.publicKey,
       priceFeed:     feedPda,
@@ -116,7 +131,7 @@ async function ensurePriceFeedExists(
     .signers([admin])
     .rpc();
 
-  console.log(`[init] PriceFeed created for ${indexId}`);
+  console.log(`[init] PriceFeed created for ${entry.chainId}`);
 }
 
 // ── Price push ─────────────────────────────────────────────────────────────
@@ -124,11 +139,14 @@ async function ensurePriceFeedExists(
 async function pushPrice(
   program: anchor.Program,
   admin:   Keypair,
-  indexId: string,
+  entry:   IndexEntry,
 ): Promise<void> {
-  const priceUsd = await fetchOraclePrice(indexId);
+  // Fetch price from oracle using the oracle's internal ID ('awp-index' format).
+  // Push to the on-chain PriceFeed PDA using the short chain ID ('AWP' format),
+  // which matches what the frontend derives via findPriceFeedPda('AWP').
+  const priceUsd = await fetchOraclePrice(entry.oracleId);
   const priceBN  = toSixDecimals(priceUsd);
-  const feedPda  = priceFeedPda(indexId);
+  const feedPda  = priceFeedPda(entry.chainId);
 
   await program.methods
     .pushPrice({ price: priceBN })
@@ -140,7 +158,7 @@ async function pushPrice(
     .rpc();
 
   console.log(
-    `[push] ${indexId.padEnd(14)} $${priceUsd.toFixed(2).padStart(10)}` +
+    `[push] ${entry.chainId.padEnd(7)} $${priceUsd.toFixed(2).padStart(10)}` +
     `  (u64=${priceBN.toString()})  feed=${feedPda.toBase58().slice(0, 8)}…`,
   );
 }
@@ -152,13 +170,13 @@ async function runCycle(program: anchor.Program, admin: Keypair): Promise<void> 
   console.log(`\n[cycle] ${ts}`);
 
   const results = await Promise.allSettled(
-    INDEX_IDS.map(id => pushPrice(program, admin, id)),
+    INDEX_MAPPING.map(entry => pushPrice(program, admin, entry)),
   );
 
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
     if (r.status === "rejected") {
-      console.error(`[error] ${INDEX_IDS[i]}: ${(r.reason as Error).message}`);
+      console.error(`[error] ${INDEX_MAPPING[i].chainId}: ${(r.reason as Error).message}`);
     }
   }
 }
@@ -176,8 +194,8 @@ async function main(): Promise<void> {
   console.log(`Program:   ${PROGRAM_ID.toBase58()}`);
 
   // One-time: ensure all PriceFeed accounts exist on-chain.
-  for (const id of INDEX_IDS) {
-    await ensurePriceFeedExists(program, admin, id);
+  for (const entry of INDEX_MAPPING) {
+    await ensurePriceFeedExists(program, admin, entry);
   }
 
   // Push immediately, then on schedule.

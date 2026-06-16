@@ -21,15 +21,13 @@ import {
   extractErrorMessage,
   type OnChainPosition,
 } from '@/lib/program';
-import { fetchSkinPrice } from '@/services/skinPriceService';
+import { useOnChainPrices } from '@/hooks/useOnChainPrices';
 import { decodeBase58 } from '@/lib/base58';
 import { isMarketConfigured } from '@/lib/markets';
 
 import type { TradeRecord } from '@/lib/db';
 
 type Tab = 'positions' | 'orders' | 'history';
-
-const PRICE_POLL_MS = 15_000;
 
 const SKIN_TO_MARKET: Record<string, string> = {
   'awp-index':   'AWP',
@@ -60,6 +58,8 @@ export default function PortfolioPage() {
   const { user }                 = useAuth();
   const program                  = useProgram();
   const addToast                 = useToastStore((s) => s.addToast);
+
+  const chainPrices = useOnChainPrices();
 
   const [vaultBalance,    setVaultBalance]    = useState<number | null>(null);
   const [onChainPositions, setOnChainPositions] = useState<OnChainPosition[]>([]);
@@ -139,27 +139,20 @@ export default function PortfolioPage() {
     }
   }, [tab, showOnChain, dbHistory, loadDbHistory]);
 
-  // Poll mark prices for open on-chain positions
+  // Sync mark prices from on-chain PriceFeed accounts — same source as close_position.
   useEffect(() => {
     if (!isRealWallet || onChainPositions.length === 0) return;
-
-    const skinIds = Array.from(new Set(onChainPositions.map(p => p.priceSkinId)));
-
-    const poll = async () => {
-      const results = await Promise.allSettled(skinIds.map(id => fetchSkinPrice(id)));
-      const prices: Record<string, number> = {};
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled' && r.value.markPrice > 0) {
-          prices[skinIds[i]] = r.value.markPrice;
-        }
-      });
-      setMarkPrices(prev => ({ ...prev, ...prices }));
-    };
-
-    poll();
-    const timer = setInterval(poll, PRICE_POLL_MS);
-    return () => clearInterval(timer);
-  }, [isRealWallet, onChainPositions.length]);
+    const update: Record<string, number> = {};
+    for (const p of onChainPositions) {
+      const ocp = chainPrices[p.priceSkinId];
+      if (ocp && !ocp.stale && ocp.price > 0) {
+        update[p.priceSkinId] = ocp.price;
+      }
+    }
+    if (Object.keys(update).length > 0) {
+      setMarkPrices(prev => ({ ...prev, ...update }));
+    }
+  }, [isRealWallet, onChainPositions, chainPrices]);
 
   // Close an on-chain position
   const handleCloseOnChain = useCallback(async (pos: OnChainPosition) => {

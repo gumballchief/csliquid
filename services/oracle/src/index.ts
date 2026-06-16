@@ -61,7 +61,22 @@ async function updateIndex(
     return;
   }
 
-  const { price, volume } = computeIndexVwap(successful);
+  const { price: rawPrice, volume } = computeIndexVwap(successful);
+
+  // Cap per-cycle move at 20% to absorb bad CSFloat/Skinport listings.
+  const prevRow = getLatestPrice(indexId);
+  let price = rawPrice;
+  if (prevRow && prevRow.price > 0) {
+    const maxMove = prevRow.price * 0.20;
+    if (Math.abs(price - prevRow.price) > maxMove) {
+      price = prevRow.price + Math.sign(price - prevRow.price) * maxMove;
+      console.warn(
+        `[oracle] ${indexId}: price capped ${rawPrice.toFixed(2)} → ${price.toFixed(2)} ` +
+        `(prev=${prevRow.price.toFixed(2)}, raw_move=${((rawPrice - prevRow.price) / prevRow.price * 100).toFixed(1)}%)`,
+      );
+    }
+  }
+
   insertPrice(indexId, price, volume, successful.length);
 
   console.log(
