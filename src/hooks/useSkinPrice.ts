@@ -6,6 +6,7 @@ import {
   getCached,
   SkinPriceData,
 } from '@/services/skinPriceService';
+import { useOnChainPrices } from '@/hooks/useOnChainPrices';
 
 // How often we hit the API (server 30s cache absorbs Steam rate limits)
 const POLL_INTERVAL_MS = 8_000;
@@ -29,14 +30,33 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     () => { const c = getCached(skinId); return c ? new Date(c.fetchedAt) : null; },
   );
 
-  // Tick state: displayed price drifts ±TICK_NOISE per second between real fetches
-  const [tickPrice, setTickPrice] = useState<number>(0);
+  // Ref for tick price — updated every second but does NOT trigger re-renders.
+  // Components read the ref at render time (driven by the 8s API poll / 30s on-chain update).
+  const tickPriceRef = useRef<number>(0);
 
   const mountedRef  = useRef(true);
   const skinIdRef   = useRef(skinId);
   skinIdRef.current = skinId;
-  // Real price anchor from the last successful API fetch
+  // Real price anchor — updated by on-chain poll (primary) or API fetch (fallback)
   const realPriceRef = useRef<number>(0);
+  // 24-hour change computed from KV snapshot
+  const [changePct24h, setChangePct24h] = useState<number>(0);
+
+  // ── On-chain price (30-second poll, highest priority) ──────────────────
+  const onChainPrices    = useOnChainPrices();
+  // Ref so doFetch (stable callback) always sees the latest on-chain prices
+  const onChainPricesRef = useRef(onChainPrices);
+  onChainPricesRef.current = onChainPrices;
+
+  useEffect(() => {
+    const ocp = onChainPrices[skinId];
+    if (!ocp || ocp.stale || ocp.price <= 0) return;
+    if (ocp.price === realPriceRef.current) return; // skip no-op updates
+    realPriceRef.current = ocp.price;
+    tickPriceRef.current = ocp.price;
+    setUpdated(new Date(ocp.publishedAt * 1000));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onChainPrices, skinId]);
 
   const doFetch = useCallback(async (showLoading = false) => {
     const id = skinIdRef.current;
@@ -47,11 +67,15 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
       if (!mountedRef.current || skinIdRef.current !== id) return;
       setData(result);
       setError(null);
-      setUpdated(new Date(result.fetchedAt));
-      // Snap tick price to the fresh real price
+      // Snap tick price to API price only when no fresh on-chain price is available
       if (result.markPrice > 0) {
-        realPriceRef.current = result.markPrice;
-        setTickPrice(result.markPrice);
+        const ocp = onChainPricesRef.current[id];
+        const hasChainPrice = ocp && !ocp.stale && ocp.price > 0;
+        if (!hasChainPrice) {
+          realPriceRef.current = result.markPrice;
+          tickPriceRef.current = result.markPrice;
+          setUpdated(new Date(result.fetchedAt));
+        }
       }
     } catch (err) {
       if (!mountedRef.current || skinIdRef.current !== id) return;
@@ -60,6 +84,26 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
       if (mountedRef.current && skinIdRef.current === id) setLoading(false);
     }
   }, []);
+
+  // Fetch 24h KV snapshot and compute real % change
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchChange() {
+      try {
+        const res  = await fetch(`/api/prices/change24h?market=${skinId}`);
+        const json = await res.json() as { price24h?: number };
+        if (cancelled || !json.price24h || json.price24h <= 0) return;
+        const current = realPriceRef.current;
+        if (current > 0) {
+          setChangePct24h(((current - json.price24h) / json.price24h) * 100);
+        }
+      } catch { /* ignore */ }
+    }
+    fetchChange();
+    const timer = setInterval(fetchChange, 60_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [skinId]);
+
 
   // Poll API on mount + skinId change
   useEffect(() => {
@@ -73,7 +117,7 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
       setUpdated(new Date(cached.fetchedAt));
       if (cached.markPrice > 0) {
         realPriceRef.current = cached.markPrice;
-        setTickPrice(cached.markPrice);
+        tickPriceRef.current = cached.markPrice;
       }
     } else {
       setData(null);
@@ -91,18 +135,17 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     return () => { mountedRef.current = false; };
   }, []);
 
-  // 1-second micro-tick: random walk around the real price anchor
+  // 1-second micro-tick: random walk around the real price anchor.
+  // Updates a ref (not state) so it never causes a re-render by itself.
+  // The animated value is read by callers at their next render (API poll / on-chain update).
   useEffect(() => {
     const tick = setInterval(() => {
       const base = realPriceRef.current;
       if (base <= 0) return;
-      setTickPrice(prev => {
-        const current = prev > 0 ? prev : base;
-        // Small noise + gentle mean-reversion so the display doesn't drift far
-        const noise   = (Math.random() - 0.5) * 2 * TICK_NOISE;
-        const revert  = (base - current) / base * 0.15; // pull 15% back toward anchor each tick
-        return current * (1 + noise + revert);
-      });
+      const current = tickPriceRef.current > 0 ? tickPriceRef.current : base;
+      const noise   = (Math.random() - 0.5) * 2 * TICK_NOISE;
+      const revert  = (base - current) / base * 0.15;
+      tickPriceRef.current = current * (1 + noise + revert);
     }, TICK_INTERVAL_MS);
     return () => clearInterval(tick);
   }, []);
@@ -124,14 +167,15 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
 
   const base = data ?? fallback;
 
-  // Use tick price when we have a live/cached real price; otherwise raw API value
-  const markPrice  = (tickPrice > 0 && base.markPrice > 0) ? tickPrice : base.markPrice;
+  // Use tick price (ref) when we have a live/cached real price; otherwise raw API value
+  const markPrice  = (tickPriceRef.current > 0 && base.markPrice > 0) ? tickPriceRef.current : base.markPrice;
   const indexPrice = markPrice * 0.9998;
 
   return {
     ...base,
     markPrice,
     indexPrice,
+    changePct24h: changePct24h !== 0 ? changePct24h : base.changePct24h,
     loading,
     error,
     lastUpdated,
