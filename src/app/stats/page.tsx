@@ -108,6 +108,7 @@ function MiniChart({ prices, height = 56 }: { prices: number[]; height?: number 
 }
 
 export default function StatsPage() {
+  const [mounted,       setMounted]       = useState(false);
   const [pool,          setPool]          = useState<PoolStats | null>(null);
   const [oracleData,    setOracleData]    = useState<Record<string, OracleStatus>>({});
   const [priceHistory,  setPriceHistory]  = useState<Record<string, PriceHistory>>({});
@@ -115,6 +116,8 @@ export default function StatsPage() {
   const [uptimeStart,   setUptimeStart]   = useState(0);
   const [now,           setNow]           = useState(0);
   const prices = useAllPrices();
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     fetch('/api/pool/stats').then(r => r.json()).then(setPool).catch(() => {});
@@ -154,6 +157,14 @@ export default function StatsPage() {
     const id = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(id);
   }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-green-400 font-mono text-sm animate-pulse">LOADING...</div>
+      </div>
+    );
+  }
 
   const totalVol24h = prices.reduce((s, p) => s + p.volume24h, 0);
   const fees24h     = pool ? pool.feesEarned : 0;

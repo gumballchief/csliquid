@@ -11,6 +11,7 @@ const HERO_INDEX_CARDS = [
   { id: 'knife-index', label: 'Knife Index', skin: 'Karambit | Fade',              url: '/skins/knife-index.png' },
   { id: 'ak47-index',  label: 'AK-47 Index', skin: 'AK-47 | Wild Lotus',          url: '/skins/ak47-index.png'  },
   { id: 'glove-index', label: 'Glove Index', skin: 'Sport Gloves | Crimson Weave', url: '/skins/glove-index.png' },
+  { id: 'cs500-index', label: 'CS500 Index', skin: 'CS500 Basket',                 url: '/skins/cs500-index.png' },
 ];
 
 // ── Market metadata ────────────────────────────────────────────────────────────
@@ -19,6 +20,7 @@ const MARKET_META = [
   { id: 'ak47-index',  weapon: 'AK-47', name: 'AK-47 Index' },
   { id: 'knife-index', weapon: 'KNIFE', name: 'Knife Index' },
   { id: 'glove-index', weapon: 'GLOVE', name: 'Glove Index' },
+  { id: 'cs500-index', weapon: 'CS500', name: 'CS500 Index' },
 ] as const;
 
 // ── Formatters ─────────────────────────────────────────────────────────────────
@@ -59,13 +61,17 @@ type LiveMarket = {
 
 // ── Landing page ───────────────────────────────────────────────────────────────
 export default function LandingPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const awp   = useSkinPrice('awp-index');
   const ak47  = useSkinPrice('ak47-index');
   const knife = useSkinPrice('knife-index');
   const glove = useSkinPrice('glove-index');
+  const cs500 = useSkinPrice('cs500-index');
 
   const skinData: Record<string, ReturnType<typeof useSkinPrice>> = {
-    'awp-index': awp, 'ak47-index': ak47, 'knife-index': knife, 'glove-index': glove,
+    'awp-index': awp, 'ak47-index': ak47, 'knife-index': knife, 'glove-index': glove, 'cs500-index': cs500,
   };
 
   const [pool,     setPool]     = useState<PoolStats | null>(null);
@@ -74,6 +80,14 @@ export default function LandingPage() {
   useEffect(() => {
     fetch('/api/pool/stats').then(r => r.json()).then(setPool).catch(() => {});
   }, []);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-green-400 font-mono text-sm animate-pulse">LOADING...</div>
+      </div>
+    );
+  }
 
   // Derive live market rows for PickSkinDemo
   const liveMarkets: LiveMarket[] = MARKET_META.map(m => {
@@ -138,9 +152,9 @@ export default function LandingPage() {
           </p>
         </div>
 
-        {/* 4 index skin cards — 2×2 on mobile, 4-across on md+ */}
+        {/* 5 index skin cards — 2×3 on mobile, 5-across on lg+ */}
         <div
-          className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 md:px-6 pb-8 max-w-2xl md:max-w-3xl lg:max-w-none mx-auto"
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 px-4 md:px-6 pb-8 max-w-sm sm:max-w-2xl lg:max-w-none mx-auto"
           style={fadeUp(260)}
         >
           {HERO_INDEX_CARDS.map((card, i) => {
@@ -292,7 +306,7 @@ export default function LandingPage() {
           </StepWrapper>
 
           <StepWrapper step="03" title="Manage PNL" subtitle="Monitor live and close anytime">
-            <PnlDemo entryPrice={awp.loading ? 91.00 : awp.markPrice * 0.953} markPrice={awp.loading ? 95.40 : awp.markPrice} />
+            <PnlDemo />
           </StepWrapper>
         </div>
       </section>
@@ -543,7 +557,7 @@ function TradeDemo({ entryPrice }: { entryPrice: number }) {
 // ── Step 3: PNL demo ────────────────────────────────────────────────────────────
 const PNL_SERIES = [0, 3, 1, 6, 4, 9, 7, 13, 11, 16, 18, 22, 20, 25, 28, 26, 31, 35, 33, 38, 44];
 
-function PnlDemo({ entryPrice, markPrice }: { entryPrice: number; markPrice: number }) {
+function PnlDemo() {
   const W = 280, H = 56;
   const min = Math.min(...PNL_SERIES);
   const max = Math.max(...PNL_SERIES);
@@ -554,12 +568,6 @@ function PnlDemo({ entryPrice, markPrice }: { entryPrice: number; markPrice: num
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
 
-  const size = 10;
-  const pnl  = (markPrice - entryPrice) * size;
-  const pct  = entryPrice > 0 ? ((markPrice - entryPrice) / entryPrice) * 100 * 5 : 0; // 5× leverage
-  const pup  = pnl >= 0;
-  const liq  = entryPrice * (1 - 0.9 / 5);
-
   return (
     <div className="space-y-3">
       <div className="flex items-start justify-between">
@@ -567,15 +575,15 @@ function PnlDemo({ entryPrice, markPrice }: { entryPrice: number; markPrice: num
           <p className="text-[11px] font-mono uppercase tracking-wider text-tx-text">AWP-INDEX-PERP</p>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-[9px] font-mono uppercase tracking-wider bg-tx-green/10 text-tx-green border border-tx-green/20 px-1.5 py-0.5">LONG</span>
-            <span className="text-[10px] font-mono text-tx-dim">5× · {size} units</span>
+            <span className="text-[10px] font-mono text-tx-dim">5× · 10 units</span>
           </div>
         </div>
         <div className="text-right">
-          <p className={`text-[18px] font-mono font-bold tabular-nums leading-none ${pup ? 'text-tx-green' : 'text-tx-red'}`}>
-            {pup ? '+' : ''}{fmtPrice(Math.abs(pnl)).replace('$', pup ? '+$' : '-$')}
+          <p className="text-[18px] font-mono font-bold tabular-nums leading-none text-tx-green">
+            +$237.50
           </p>
-          <p className={`text-[10px] font-mono tabular-nums mt-0.5 ${pup ? 'text-tx-green' : 'text-tx-red'}`}>
-            {pup ? '+' : ''}{pct.toFixed(2)}%
+          <p className="text-[10px] font-mono tabular-nums mt-0.5 text-tx-green">
+            +25.70%
           </p>
         </div>
       </div>
@@ -587,14 +595,14 @@ function PnlDemo({ entryPrice, markPrice }: { entryPrice: number; markPrice: num
       </div>
 
       <div className="space-y-1.5">
-        <DemoRow label="Entry Price"    value={fmtPrice(entryPrice)} />
-        <DemoRow label="Mark Price"     value={fmtPrice(markPrice)} valueClass="text-tx-text" />
-        <DemoRow label="Unrealized PNL" value={`${pup ? '+' : ''}$${Math.abs(pnl).toFixed(2)}`} valueClass={`${pup ? 'text-tx-green' : 'text-tx-red'} font-bold`} />
-        <DemoRow label="Liq. Price"     value={fmtPrice(liq)} valueClass="text-tx-red" />
+        <DemoRow label="Entry Price"    value="$92.50" />
+        <DemoRow label="Mark Price"     value="$97.30" valueClass="text-tx-text" />
+        <DemoRow label="Unrealized PNL" value="+$237.50" valueClass="text-tx-green font-bold" />
+        <DemoRow label="Liq. Price"     value="$74.10" valueClass="text-tx-red" />
       </div>
 
-      <button className="w-full py-2.5 rounded-sm text-[11px] font-mono uppercase tracking-wider font-bold border border-tx-red text-tx-red hover:bg-tx-red hover:text-white transition-colors">
-        Close Position
+      <button disabled className="w-full py-2.5 rounded-sm text-[11px] font-mono uppercase tracking-wider font-bold border border-tx-dim text-tx-dim opacity-40 cursor-not-allowed">
+        CLOSE POSITION
       </button>
     </div>
   );
