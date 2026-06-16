@@ -3,7 +3,11 @@ import localFont from 'next/font/local';
 import './globals.css';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
-import WalletContextProvider from '@/contexts/WalletContextProvider';
+import dynamic from 'next/dynamic';
+const WalletContextProvider = dynamic(
+  () => import('@/contexts/WalletContextProvider'),
+  { ssr: false },
+);
 import { AuthProvider } from '@/contexts/AuthContext';
 import AuthGuard from '@/components/auth/AuthGuard';
 import Header from '@/components/layout/Header';
