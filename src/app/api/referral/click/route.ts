@@ -11,6 +11,7 @@ function kvUnavailable(): boolean {
 // Called when someone visits /ref/[username] — increments the referrals counter.
 export async function POST(req: NextRequest): Promise<NextResponse> {
   if (kvUnavailable()) {
+    console.warn('[referral/click] KV not configured — skipping');
     return NextResponse.json({ ok: true });
   }
 
@@ -22,15 +23,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { wallet } = body;
+  console.log('[referral/click] wallet:', wallet);
   if (!wallet) return NextResponse.json({ ok: true });
 
   try {
     const refKey = `referrer:${wallet}`;
     const data   = await kv.get<ReferrerData>(refKey);
+    console.log('[referral/click] existing data:', data ? `referrals=${data.referrals}` : 'not found');
+
     if (data) {
-      await kv.set(refKey, { ...data, referrals: data.referrals + 1 });
+      const updated = { ...data, referrals: data.referrals + 1 };
+      await kv.set(refKey, updated);
+      console.log('[referral/click] updated referrals to:', updated.referrals);
+    } else {
+      console.warn('[referral/click] wallet not registered in KV — no increment');
     }
-  } catch {}
+  } catch (err) {
+    console.error('[referral/click] KV error:', err);
+    return NextResponse.json({ error: 'KV error', ok: false }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }

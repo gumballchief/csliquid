@@ -29,6 +29,26 @@ import { Skin } from '@/types';
 // Anchor Position account discriminator — sha256("account:Position")[0..8]
 const POSITION_DISC = [170, 188, 143, 228, 122, 64, 247, 208];
 
+// Reads the referrer cookie set by /ref/[username] and pings /api/referral/track.
+// Fire-and-forget — never blocks trade UI.
+function fireReferralTrack(tradeVolume: number, fee: number): void {
+  try {
+    const match = document.cookie.split('; ').find(r => r.startsWith('referrer='));
+    if (!match) return;
+    const referrerWallet = decodeURIComponent(match.split('=')[1] ?? '');
+    if (!referrerWallet) return;
+    console.log('[referral] tracking trade for referrer:', referrerWallet, 'volume:', tradeVolume, 'fee:', fee);
+    fetch('/api/referral/track', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ referrerWallet, tradeVolume, fee }),
+    })
+      .then(r => r.json())
+      .then(d => console.log('[referral] track result:', d))
+      .catch(e => console.error('[referral] track error:', e));
+  } catch {}
+}
+
 interface ExistingPosition {
   side:             'long' | 'short';
   collateral:       number;
@@ -276,6 +296,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setShowReview(false);
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
+        fireReferralTrack(notional, fee);
         // Pass vaultBalance as override so the store guard uses the live on-chain
         // balance — not the stale simulation usdcBalance — when recording the position.
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58(), balanceOverride: vaultBalance ?? availBalance });
@@ -320,6 +341,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         setShowReview(false);
         setCollateral('');
         addToast({ txSig: sig, action: 'open', side, skinName, leverage, notional, entryPrice });
+        fireReferralTrack(notional, fee);
         openPosition({ skinId, skin, side, collateral: col, leverage, entryPrice, txSignature: sig, positionPda: positionPda.toBase58(), balanceOverride: vaultBalance ?? availBalance });
         fetchUserAccountBalance(connection, owner)
           .then(b => { if (b !== null) setVaultBalance(b); })
