@@ -18,7 +18,11 @@ const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ
 const ASSOC_TOKEN_PROG = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const USDC_MINT        = new PublicKey('Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
 
-const AIRDROP_AMOUNT = BigInt(10_000_000_000); // 10,000 USDC at 6 decimal places
+const AIRDROP_AMOUNT   = BigInt(10_000_000_000); // 10,000 USDC (6 decimals)
+// Seed enough SOL to cover UserAccount PDA rent (~0.005 SOL) + tx fees.
+// Sent only when the user's wallet has < SOL_MIN_THRESHOLD to avoid waste.
+const SOL_SEED_LAMPORTS  = 10_000_000;  // 0.01 SOL
+const SOL_MIN_THRESHOLD  = 5_000_000;   // 0.005 SOL — below this we seed
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL ??
@@ -79,7 +83,6 @@ function kvAvailable(): boolean {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // Parse request — these errors are caller's fault, not ours
   let body: { wallet?: string };
   try {
     body = await req.json();
@@ -99,15 +102,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
   }
 
-  // Everything beyond here is wrapped so we always return JSON, never HTML
   try {
-    // One airdrop per wallet — check KV first
     if (kvAvailable()) {
       const existing = await kv.get(`airdropped:${wallet}`);
       if (existing) return NextResponse.json({ already: true });
     }
 
-    // Load admin keypair from env
     const adminKeyRaw = process.env.ADMIN_KEYPAIR_BASE58;
     if (!adminKeyRaw) {
       return NextResponse.json(
@@ -130,22 +130,41 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const adminAta   = getAta(admin.publicKey, USDC_MINT);
     const userAta    = getAta(userPubkey, USDC_MINT);
 
+    // Check if user needs SOL seeded (for session wallet tx fees + account rent)
+    const userSolBal = await connection.getBalance(userPubkey).catch(() => 0);
+    const needsSol   = userSolBal < SOL_MIN_THRESHOLD;
+    console.log(`[airdrop] wallet=${wallet} solBal=${userSolBal} needsSol=${needsSol}`);
+
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: admin.publicKey });
+
+    // Seed SOL first (must be before USDC so account exists for ATA creation)
+    if (needsSol) {
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: admin.publicKey,
+          toPubkey:   userPubkey,
+          lamports:   SOL_SEED_LAMPORTS,
+        })
+      );
+    }
+
     tx.add(createAtaIdempotentIx(admin.publicKey, userPubkey, USDC_MINT));
     tx.add(transferIx(adminAta, userAta, admin.publicKey, AIRDROP_AMOUNT));
     tx.sign(admin);
 
     const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+    console.log(`[airdrop] confirmed tx=${sig} solSeeded=${needsSol}`);
 
     if (kvAvailable()) {
       await kv.set(`airdropped:${wallet}`, { ts: Date.now(), tx: sig });
     }
 
-    return NextResponse.json({ success: true, tx: sig });
+    return NextResponse.json({ success: true, tx: sig, solSeeded: needsSol });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[airdrop] error:', msg);
     return NextResponse.json({ error: msg, code: 'AIRDROP_FAILED' }, { status: 500 });
   }
 }

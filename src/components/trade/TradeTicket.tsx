@@ -908,8 +908,26 @@ function DepositModal({
         const kpRaw = localStorage.getItem('guest_keypair');
         if (!kpRaw) throw new Error('Session keypair not found — try logging out and back in');
         const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
-        if (tab === 'deposit') await sendDepositKeypair(connection, signer, val);
-        else                   await sendWithdrawKeypair(connection, signer, val);
+
+        if (tab === 'deposit') {
+          // Ensure session wallet has SOL for the UserAccount PDA rent (init_if_needed)
+          const solBal = await connection.getBalance(signer.publicKey).catch(() => 0);
+          if (solBal < 5_000_000) {
+            // Try devnet faucet as a last resort for old sessions that predate admin SOL seeding
+            try {
+              const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+              const faucetSig = await connection.requestAirdrop(signer.publicKey, 10_000_000);
+              await connection.confirmTransaction({ signature: faucetSig, blockhash, lastValidBlockHeight });
+            } catch {
+              throw new Error(
+                'Your wallet has no SOL for transaction fees. Please refresh the page — your account will be automatically funded.',
+              );
+            }
+          }
+          await sendDepositKeypair(connection, signer, val);
+        } else {
+          await sendWithdrawKeypair(connection, signer, val);
+        }
       } else {
         throw new Error('No wallet connected');
       }
