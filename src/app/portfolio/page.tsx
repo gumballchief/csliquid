@@ -25,9 +25,32 @@ import { fetchSkinPrice } from '@/services/skinPriceService';
 import { decodeBase58 } from '@/lib/base58';
 import { isMarketConfigured } from '@/lib/markets';
 
+import type { TradeRecord } from '@/lib/db';
+
 type Tab = 'positions' | 'orders' | 'history';
 
 const PRICE_POLL_MS = 15_000;
+
+const SKIN_TO_MARKET: Record<string, string> = {
+  'awp-index':   'AWP',
+  'ak47-index':  'AK47',
+  'knife-index': 'KNIFE',
+  'glove-index': 'GLOVE',
+  'cs500-index': 'CS500',
+};
+function skinIdToMarket(skinId: string): string {
+  return SKIN_TO_MARKET[skinId] ?? skinId.toUpperCase();
+}
+
+function fireRecordClose(data: {
+  wallet: string; market: string; close_tx: string;
+  exit_price: number; realized_pnl: number;
+}): void {
+  fetch('/api/trades/record-close', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {});
+}
 
 export default function PortfolioPage() {
   const [tab, setTab] = useState<Tab>('positions');
@@ -42,6 +65,8 @@ export default function PortfolioPage() {
   const [onChainPositions, setOnChainPositions] = useState<OnChainPosition[]>([]);
   const [markPrices,      setMarkPrices]      = useState<Record<string, number>>({});
   const [fetchingPos,     setFetchingPos]     = useState(false);
+  const [dbHistory,       setDbHistory]       = useState<TradeRecord[] | null>(null);
+  const [loadingHistory,  setLoadingHistory]  = useState(false);
 
   const generatedPubkey = useMemo(
     () => user?.type === 'generated' ? new PublicKey(user.address) : null,
@@ -94,6 +119,26 @@ export default function PortfolioPage() {
     refreshPositions();
   }, [isRealWallet, refreshPositions]);
 
+  const loadDbHistory = useCallback(async () => {
+    if (!signerPubkey) return;
+    setLoadingHistory(true);
+    try {
+      const res  = await fetch(`/api/trades/history?wallet=${signerPubkey.toBase58()}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setDbHistory(data);
+    } catch {
+      // leave previous state
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [signerPubkey]);
+
+  useEffect(() => {
+    if (tab === 'history' && showOnChain && dbHistory === null) {
+      loadDbHistory();
+    }
+  }, [tab, showOnChain, dbHistory, loadDbHistory]);
+
   // Poll mark prices for open on-chain positions
   useEffect(() => {
     if (!isRealWallet || onChainPositions.length === 0) return;
@@ -118,12 +163,19 @@ export default function PortfolioPage() {
 
   // Close an on-chain position
   const handleCloseOnChain = useCallback(async (pos: OnChainPosition) => {
+    const exitPrice = markPrices[pos.priceSkinId] || pos.entryPrice;
+    const realizedPnl = pos.side === 'long'
+      ? (exitPrice - pos.entryPrice) * pos.size
+      : (pos.entryPrice - exitPrice) * pos.size;
+
     if (connected && publicKey && program && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
+      fireRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
+      setDbHistory(null); // invalidate so history tab refetches
       return;
     }
     if (user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
@@ -132,13 +184,15 @@ export default function PortfolioPage() {
       const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
       const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
+      fireRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
+      setDbHistory(null); // invalidate so history tab refetches
       return;
     }
     throw new Error('Cannot close position — wallet not available');
-  }, [connected, publicKey, program, user, connection, addToast, refreshPositions]);
+  }, [connected, publicKey, program, user, connection, addToast, refreshPositions, markPrices]);
 
   // Decide which positions to display
   const availBalance = showOnChain ? (vaultBalance ?? 0) : usdcBalance;
@@ -221,8 +275,10 @@ export default function PortfolioPage() {
             {t === 'positions' && positionCount > 0 && (
               <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">{positionCount}</span>
             )}
-            {t === 'history' && tradeHistory.length > 0 && (
-              <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">{tradeHistory.length}</span>
+            {t === 'history' && (showOnChain ? (dbHistory && dbHistory.length > 0) : tradeHistory.length > 0) && (
+              <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">
+                {showOnChain ? dbHistory?.length : tradeHistory.length}
+              </span>
             )}
           </button>
         ))}
@@ -291,7 +347,28 @@ export default function PortfolioPage() {
 
       {/* History */}
       {tab === 'history' && (
-        tradeHistory.length === 0 ? (
+        showOnChain ? (
+          loadingHistory ? (
+            <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">Loading history…</div>
+          ) : dbHistory && dbHistory.length > 0 ? (
+            <div className="overflow-x-auto bg-tx-surface border border-tx-border rounded">
+              <table className="w-full text-left min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-tx-border">
+                    {['Date', 'Market', 'Side', 'Size', 'Entry', 'Exit', 'Realized PnL', 'Fee', 'Lev.', 'TX'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-[9px] font-mono uppercase tracking-[0.08em] text-tx-dim whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dbHistory.map(t => <DbHistoryRow key={t.id} trade={t} />)}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">No trade history yet</div>
+          )
+        ) : tradeHistory.length === 0 ? (
           <div className="text-center py-12 text-[11px] font-mono text-tx-dim uppercase tracking-wider">No trade history yet</div>
         ) : (
           <div className="overflow-x-auto bg-tx-surface border border-tx-border rounded">
@@ -508,6 +585,58 @@ function SimPositionRow({ position: p, onClose }: { position: PerpsPosition; onC
     </tr>
   );
 }
+
+// ── DB history row (on-chain users) ──────────────────────────────────────────
+
+function DbHistoryRow({ trade: t }: { trade: TradeRecord }) {
+  const pnl      = Number(t.realized_pnl ?? 0);
+  const positive = pnl >= 0;
+  return (
+    <tr className="border-b border-tx-border hover:bg-tx-raised transition-colors">
+      <td className="px-4 py-3 text-[10px] font-mono text-tx-dim tabular-nums whitespace-nowrap">
+        {t.closed_at ? new Date(t.closed_at).toLocaleString() : '—'}
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-text">{t.market}</td>
+      <td className="px-4 py-3">
+        <span className={`text-[9px] font-mono uppercase px-2 py-0.5 border ${
+          t.direction === 'LONG'
+            ? 'bg-tx-green/10 border-tx-green/20 text-tx-green'
+            : 'bg-tx-red/10 border-tx-red/20 text-tx-red'
+        }`}>{t.direction}</span>
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-muted tabular-nums">{Number(t.size).toFixed(4)}</td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-dim tabular-nums">
+        ${Number(t.entry_price).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-muted tabular-nums">
+        {t.exit_price != null
+          ? `$${Number(t.exit_price).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+          : '—'}
+      </td>
+      <td className="px-4 py-3">
+        <span className={`text-[11px] font-mono font-bold tabular-nums ${positive ? 'text-tx-green' : 'text-tx-red'}`}>
+          {positive ? '+' : ''}${pnl.toFixed(2)}
+        </span>
+      </td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-dim tabular-nums">${Number(t.fee).toFixed(4)}</td>
+      <td className="px-4 py-3 text-[11px] font-mono text-tx-muted tabular-nums">{t.leverage}×</td>
+      <td className="px-4 py-3">
+        {t.close_tx ? (
+          <a
+            href={`https://solscan.io/tx/${t.close_tx}?cluster=devnet`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-mono text-tx-green/70 hover:text-tx-green transition-colors"
+          >
+            {t.close_tx.slice(0, 6)}…
+          </a>
+        ) : '—'}
+      </td>
+    </tr>
+  );
+}
+
+// ── Simulation history row (pure guests) ─────────────────────────────────────
 
 function HistoryRow({ trade: t }: { trade: ClosedTrade }) {
   const pnlPositive = t.realizedPnl >= 0;
