@@ -1,6 +1,6 @@
 'use client';
 
-import { FC, ReactNode, useMemo, useEffect } from 'react';
+import { FC, ReactNode, useState, useEffect } from 'react';
 import { ConnectionProvider, WalletProvider, useWallet } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
@@ -70,14 +70,19 @@ interface Props {
 const WalletContextProvider: FC<Props> = ({ children }) => {
   const endpoint = RPC_URL;
 
-  const wallets = useMemo(
-    () => [
+  // Wallet adapters use browser APIs (window.solana etc) — must be created client-side
+  // only to avoid SSR/hydration mismatches (#418/#423/#425).
+  const [wallets, setWallets] = useState<
+    (PhantomWalletAdapter | SolflareWalletAdapter | TorusWalletAdapter)[]
+  >([]);
+
+  useEffect(() => {
+    setWallets([
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
       new TorusWalletAdapter(),
-    ],
-    [] // eslint-disable-line react-hooks/exhaustive-deps
-  );
+    ]);
+  }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>

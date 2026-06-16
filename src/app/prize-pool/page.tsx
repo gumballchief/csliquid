@@ -122,14 +122,16 @@ export default function PrizePoolPage() {
               </Link>
             </div>
 
-            {/* Skin image placeholder */}
-            <div className="order-1 lg:order-2 h-56 sm:h-72 lg:h-auto border-b lg:border-b-0 lg:border-l border-tx-border relative overflow-hidden bg-tx-raised flex items-center justify-center">
-              <div className="text-center space-y-1.5 py-8">
-                <p className="font-mono text-[10px] text-tx-dim uppercase tracking-widest">AWP</p>
-                <p className="font-mono text-2xl font-black text-tx-text">Dragon Lore</p>
-                <p className="font-mono text-[10px] text-tx-dim">Factory New</p>
-                <p className="font-mono text-[10px] text-tx-dim mt-3">~$1,200 – $1,800 USD</p>
-              </div>
+            {/* Skin image */}
+            <div className="order-1 lg:order-2 h-64 sm:h-80 lg:h-auto min-h-[280px] border-b lg:border-b-0 lg:border-l border-tx-border bg-tx-raised flex items-center justify-center p-6">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://community.fastly.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NVknk9gCBkL0YjYEuawWpXSQov38bXbKPymoS_GVh3LLROifam1aMiGgqHatZ_kO_khoPJYuKuY-PFkmsAs1Jt2L_UrIe8hFI3-uS5JpWvNGfMp112eOW/360fx360f"
+                alt="AWP | Dragon Lore (Factory New)"
+                width={260}
+                height={260}
+                style={{ width: 260, height: 260, objectFit: 'contain' }}
+              />
             </div>
           </div>
         </section>

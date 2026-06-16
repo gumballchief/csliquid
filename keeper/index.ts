@@ -36,6 +36,16 @@ const ASSOCIATED_TOKEN_PROGRAM_ID  = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5x
 const LAMPORTS_PER_USD  = 1_000_000;    // 6-decimal fixed-point
 const STALE_ORACLE_MS   = 10 * 60_000;  // 10 minutes
 
+// When Steam price < 50% of baseline, push baseline instead of corrupted Steam price.
+// This allows the oracle to recover from anomalous low prices without staying stuck.
+const BASELINE_PRICES: Record<IndexId, number> = {
+  AWP:   90,
+  AK47:  400,
+  KNIFE: 1200,
+  GLOVE: 1050,
+  CS500: 1400,
+};
+
 const INDEX_IDS = ['AWP', 'AK47', 'KNIFE', 'GLOVE', 'CS500'] as const;
 type IndexId = (typeof INDEX_IDS)[number];
 
@@ -220,8 +230,15 @@ async function runPricePusher(): Promise<void> {
         continue;
       }
 
+      const baseline = BASELINE_PRICES[indexId];
+      let priceToSend = price;
+      if (baseline && price < baseline * 0.5) {
+        console.warn(`[PRICE] ${indexId} Steam price $${price.toFixed(2)} < 50% of baseline $${baseline} — using baseline for oracle recovery`);
+        priceToSend = baseline;
+      }
+
       const priceFeed    = findPriceFeedPda(indexId);
-      const onChainPrice = new BN(Math.round(price * LAMPORTS_PER_USD));
+      const onChainPrice = new BN(Math.round(priceToSend * LAMPORTS_PER_USD));
 
       await (program.methods as any)
         .pushPrice({ price: onChainPrice })
@@ -231,7 +248,7 @@ async function runPricePusher(): Promise<void> {
         })
         .rpc();
 
-      results.push({ label: indexId, price });
+      results.push({ label: indexId, price: priceToSend });
 
       // Push to price-history API (best-effort)
       try {
