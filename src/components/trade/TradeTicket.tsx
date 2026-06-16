@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import Link from 'next/link';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { Program } from '@coral-xyz/anchor';
@@ -14,6 +15,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useProgram } from '@/hooks/useProgram';
 import {
   sendOpenPosition, sendOpenPositionKeypair,
+  sendClosePosition, sendClosePositionKeypair,
   extractErrorMessage, findMarketPda, findPositionPda,
   sendDeposit, sendWithdraw, fetchUserAccountBalance,
 } from '@/lib/program';
@@ -22,6 +24,17 @@ import { isMarketConfigured, getPriceFeed, findPriceFeedPda } from '@/lib/market
 import { calcLiquidationPrice, calcNotional, calcTakerFee } from '@/lib/perps';
 import { useMarketPrice } from '@/hooks/useMarketPrice';
 import { Skin } from '@/types';
+
+// Anchor Position account discriminator — sha256("account:Position")[0..8]
+const POSITION_DISC = [170, 188, 143, 228, 122, 64, 247, 208];
+
+interface ExistingPosition {
+  side:             'long' | 'short';
+  collateral:       number;
+  size:             number;
+  entryPrice:       number;
+  liquidationPrice: number;
+}
 
 interface Props {
   skinId:    string;
@@ -71,6 +84,11 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
   const [feedback,     setFeedback]     = useState<{ ok: boolean; msg: string } | null>(null);
   const [longOI,  setLongOI]  = useState<number>(0);
   const [shortOI, setShortOI] = useState<number>(0);
+
+  // Existing on-chain position for this wallet + market (null = none)
+  const [existingPos,    setExistingPos]    = useState<ExistingPosition | null>(null);
+  const [closeConfirm,   setCloseConfirm]   = useState(false);
+  const [closingExisting, setClosingExisting] = useState(false);
 
   const sessionAddress = connected && publicKey
     ? publicKey.toBase58()
@@ -155,6 +173,49 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     })();
     return () => { cancelled = true; };
   }, [skinId, connection]);
+
+  // Check for an existing open position on this market (real-wallet users only)
+  useEffect(() => {
+    if (!signerPubkey || !isMarketConfigured(skinId)) {
+      setExistingPos(null);
+      return;
+    }
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const priceFeed   = getPriceFeed(skinId);
+        const marketPda   = findMarketPda(priceFeed);
+        const positionPda = findPositionPda(signerPubkey, marketPda);
+        const info        = await connection.getAccountInfo(positionPda);
+
+        if (cancelled) return;
+        if (!info || info.data.length < 138 || !POSITION_DISC.every((b, i) => info.data[i] === b)) {
+          setExistingPos(null);
+          return;
+        }
+
+        const d = info.data;
+        const u64 = (off: number) =>
+          new BN(Array.from(d.slice(off, off + 8)), 'le').toNumber() / 1_000_000;
+
+        setExistingPos({
+          side:             d[72] === 1 ? 'long' : 'short',
+          collateral:       u64(73),
+          size:             u64(81),
+          entryPrice:       u64(97),
+          liquidationPrice: u64(105),
+        });
+      } catch {
+        if (!cancelled) setExistingPos(null);
+      }
+    };
+
+    check();
+    const timer = setInterval(check, 30_000);
+    return () => { cancelled = true; clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signerPubkey, skinId, connection]);
 
   // AVAIL = vault balance for any keyed user; simulated store balance for pure guests
   const availBalance = signerPubkey ? (vaultBalance ?? 0) : usdcBalance;
@@ -296,10 +357,57 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     setTimeout(() => setFeedback(null), 4_000);
   };
 
+  const handleCloseExisting = useCallback(async () => {
+    if (!signerPubkey || !existingPos) return;
+    setClosingExisting(true);
+    setFeedback(null);
+    try {
+      if (connected && publicKey && program && isMarketConfigured(skinId)) {
+        const sig = await sendClosePosition(program, publicKey, skinId);
+        addToast({ txSig: sig, action: 'close', skinName, side: existingPos.side });
+      } else if (user?.type === 'generated') {
+        const kpRaw = localStorage.getItem('guest_keypair');
+        if (!kpRaw) throw new Error('No trading keypair found');
+        const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
+        const sig    = await sendClosePositionKeypair(connection, signer, skinId);
+        addToast({ txSig: sig, action: 'close', skinName, side: existingPos.side });
+      } else {
+        throw new Error('Wallet not available');
+      }
+      setExistingPos(null);
+      setCloseConfirm(false);
+      // Refresh vault balance after close settles
+      if (signerPubkey) {
+        fetchUserAccountBalance(connection, signerPubkey)
+          .then(b => { if (b !== null) setVaultBalance(b); })
+          .catch(() => {});
+      }
+    } catch (err) {
+      setFeedback({ ok: false, msg: extractErrorMessage(err) });
+      setTimeout(() => setFeedback(null), 6_000);
+      setCloseConfirm(false);
+    } finally {
+      setClosingExisting(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signerPubkey, existingPos, connected, publicKey, program, user, skinId, connection]);
+
   const isLong   = side === 'long';
-  const canTrade = col > 0 && col + fee <= availBalance && !immediatelyLiquidated;
+  // Also block open when user already has a position on this market (program uses `init`)
+  const canTrade = col > 0 && col + fee <= availBalance && !immediatelyLiquidated && !existingPos;
   const hasUsdc  = availBalance > 0;
   const levPct   = ((leverage - 1) / 19) * 100;
+
+  // Live PnL for the existing position card
+  const existingPnl = existingPos
+    ? existingPos.side === 'long'
+      ? (markPrice - existingPos.entryPrice) * existingPos.size
+      : (existingPos.entryPrice - markPrice) * existingPos.size
+    : 0;
+  const existingPnlPct = existingPos && existingPos.collateral > 0
+    ? (existingPnl / existingPos.collateral) * 100
+    : 0;
+  const existingPnlPositive = existingPnl >= 0;
 
   return (
     <>
@@ -369,6 +477,69 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         </div>
 
         <div className="p-3 space-y-3">
+
+          {/* ── Existing position card ── */}
+          {existingPos && (
+            <div className="border border-tx-border rounded-sm overflow-hidden">
+              {/* Header */}
+              <div className="px-3 py-2 bg-tx-raised border-b border-tx-border flex items-center justify-between">
+                <span className="text-[9px] font-mono uppercase tracking-[0.1em] text-tx-dim">Current Position</span>
+                <span className={`text-[9px] font-mono font-bold uppercase px-2 py-0.5 border ${
+                  existingPos.side === 'long'
+                    ? 'bg-tx-green/10 border-tx-green/20 text-tx-green'
+                    : 'bg-tx-red/10 border-tx-red/20 text-tx-red'
+                }`}>
+                  {existingPos.side === 'long' ? '▲ LONG' : '▼ SHORT'}
+                </span>
+              </div>
+
+              {/* Stats */}
+              <div className="px-3 py-2 space-y-1.5">
+                <Row label="Entry"  value={`$${fmtPrice(existingPos.entryPrice)}`} />
+                <Row label="Mark"   value={`$${fmtPrice(markPrice)}`} />
+                <Row
+                  label="PnL"
+                  value={`${existingPnlPositive ? '+' : ''}$${existingPnl.toFixed(2)} (${existingPnlPositive ? '+' : ''}${existingPnlPct.toFixed(2)}%)`}
+                  valueClass={existingPnlPositive ? 'text-tx-green font-bold' : 'text-tx-red font-bold'}
+                />
+                <Row
+                  label="Liq"
+                  value={`$${fmtPrice(existingPos.liquidationPrice)}`}
+                  valueClass="text-tx-red/60"
+                />
+                <Row label="Margin" value={`$${existingPos.collateral.toFixed(2)}`} />
+              </div>
+
+              {/* Close button */}
+              <div className="px-3 pb-3">
+                {closingExisting ? (
+                  <div className="w-full py-1.5 text-center text-[10px] font-mono text-tx-dim">Closing…</div>
+                ) : closeConfirm ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleCloseExisting}
+                      className="flex-1 py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold rounded-sm bg-tx-red/10 text-tx-red border border-tx-red/30 hover:bg-tx-red/20 transition-colors"
+                    >
+                      Confirm Close
+                    </button>
+                    <button
+                      onClick={() => setCloseConfirm(false)}
+                      className="px-3 py-1.5 text-[10px] font-mono text-tx-dim hover:text-tx-text transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setCloseConfirm(true)}
+                    className="w-full py-1.5 text-[10px] font-mono uppercase tracking-wider font-bold rounded-sm bg-tx-raised text-tx-muted border border-tx-border hover:bg-tx-red/10 hover:text-tx-red hover:border-tx-red/30 transition-colors"
+                  >
+                    Close Position
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ── Order type ── */}
           <div className="flex gap-px bg-tx-border rounded-sm overflow-hidden">
@@ -552,7 +723,22 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
 
           {/* ── CTA ── */}
           {!feedback && (
-            hasUsdc ? (
+            existingPos ? (
+              <div className="w-full py-3 px-3 rounded-sm text-center border bg-tx-raised border-tx-border space-y-1">
+                <p className="text-[11px] font-mono text-tx-muted">
+                  Position already open on this market.
+                </p>
+                <p className="text-[10px] font-mono text-tx-dim">
+                  Close it above or in Portfolio before opening a new one.
+                </p>
+                <Link
+                  href="/portfolio"
+                  className="inline-block mt-1 text-[10px] font-mono uppercase tracking-wider text-tx-green hover:text-[#00e87a] transition-colors"
+                >
+                  → Go to Portfolio
+                </Link>
+              </div>
+            ) : hasUsdc ? (
               <button
                 onClick={handleReview}
                 disabled={!canTrade}
