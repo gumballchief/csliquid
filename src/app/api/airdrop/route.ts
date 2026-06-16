@@ -33,7 +33,6 @@ function getAta(owner: PublicKey, mint: PublicKey): PublicKey {
   )[0];
 }
 
-/** Associated Token Program instruction 1 = create_associated_token_account_idempotent */
 function createAtaIdempotentIx(
   payer: PublicKey,
   owner: PublicKey,
@@ -53,7 +52,6 @@ function createAtaIdempotentIx(
   });
 }
 
-/** SPL Token instruction 3 = Transfer */
 function transferIx(
   source: PublicKey,
   dest: PublicKey,
@@ -81,6 +79,7 @@ function kvAvailable(): boolean {
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  // Parse request — these errors are caller's fault, not ours
   let body: { wallet?: string };
   try {
     body = await req.json();
@@ -100,47 +99,53 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
   }
 
-  // One airdrop per wallet — check KV first
-  if (kvAvailable()) {
-    const existing = await kv.get(`airdropped:${wallet}`);
-    if (existing) return NextResponse.json({ already: true });
-  }
-
-  // Load admin keypair from env
-  const adminKeyRaw = process.env.ADMIN_KEYPAIR_BASE58;
-  if (!adminKeyRaw) {
-    return NextResponse.json({ error: 'Airdrop not configured' }, { status: 503 });
-  }
-  let admin: Keypair;
+  // Everything beyond here is wrapped so we always return JSON, never HTML
   try {
-    admin = Keypair.fromSecretKey(decodeBase58(adminKeyRaw));
-  } catch {
-    return NextResponse.json({ error: 'Invalid admin keypair' }, { status: 503 });
-  }
+    // One airdrop per wallet — check KV first
+    if (kvAvailable()) {
+      const existing = await kv.get(`airdropped:${wallet}`);
+      if (existing) return NextResponse.json({ already: true });
+    }
 
-  const connection = new Connection(RPC_URL, 'confirmed');
-  const adminAta = getAta(admin.publicKey, USDC_MINT);
-  const userAta  = getAta(userPubkey, USDC_MINT);
+    // Load admin keypair from env
+    const adminKeyRaw = process.env.ADMIN_KEYPAIR_BASE58;
+    if (!adminKeyRaw) {
+      return NextResponse.json(
+        { error: 'Admin keypair not configured', code: 'NO_KEYPAIR' },
+        { status: 503 },
+      );
+    }
 
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: admin.publicKey });
-  tx.add(createAtaIdempotentIx(admin.publicKey, userPubkey, USDC_MINT));
-  tx.add(transferIx(adminAta, userAta, admin.publicKey, AIRDROP_AMOUNT));
-  tx.sign(admin);
+    let admin: Keypair;
+    try {
+      admin = Keypair.fromSecretKey(decodeBase58(adminKeyRaw));
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid admin keypair', code: 'NO_KEYPAIR' },
+        { status: 503 },
+      );
+    }
 
-  let sig: string;
-  try {
-    sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+    const connection = new Connection(RPC_URL, 'confirmed');
+    const adminAta   = getAta(admin.publicKey, USDC_MINT);
+    const userAta    = getAta(userPubkey, USDC_MINT);
+
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: admin.publicKey });
+    tx.add(createAtaIdempotentIx(admin.publicKey, userPubkey, USDC_MINT));
+    tx.add(transferIx(adminAta, userAta, admin.publicKey, AIRDROP_AMOUNT));
+    tx.sign(admin);
+
+    const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
     await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+
+    if (kvAvailable()) {
+      await kv.set(`airdropped:${wallet}`, { ts: Date.now(), tx: sig });
+    }
+
+    return NextResponse.json({ success: true, tx: sig });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: msg, code: 'AIRDROP_FAILED' }, { status: 500 });
   }
-
-  // Record in KV so we don't double-airdrop
-  if (kvAvailable()) {
-    await kv.set(`airdropped:${wallet}`, { ts: Date.now(), tx: sig });
-  }
-
-  return NextResponse.json({ success: true, tx: sig });
 }
