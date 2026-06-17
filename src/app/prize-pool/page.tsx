@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 const COMPETITION_END = new Date('2026-06-25T00:00:00.000Z');
@@ -11,6 +11,24 @@ const BOUNTY_SLOTS = [
   { slot: 3, status: 'OPEN' as const },
   { slot: 4, status: 'OPEN' as const },
 ];
+
+interface LeaderboardEntry {
+  wallet:    string;
+  totalPnl:  number;
+  winRate:   number;
+  trades:    number;
+  volume:    number;
+}
+
+function fmtVol(n: number) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toFixed(2)}`;
+}
+
+function shortWallet(w: string) {
+  return `${w.slice(0, 4)}…${w.slice(-4)}`;
+}
 
 function getTimeLeft(end: Date) {
   const diff = Math.max(0, end.getTime() - Date.now());
@@ -60,6 +78,27 @@ function RankBadge({ rank }: { rank: number }) {
 export default function PrizePoolPage() {
   const { days, hours, minutes, seconds, mounted } = useCountdown(COMPETITION_END);
   const ended = mounted && days === 0 && hours === 0 && minutes === 0 && seconds === 0;
+
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [lbLoading,   setLbLoading]   = useState(true);
+
+  const fetchLeaderboard = useCallback(async () => {
+    try {
+      const res = await fetch('/api/leaderboard');
+      if (res.ok) {
+        const data: LeaderboardEntry[] = await res.json();
+        // Sort by volume descending for prize pool competition
+        setLeaderboard(data.sort((a, b) => b.volume - a.volume));
+      }
+    } catch {}
+    setLbLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchLeaderboard();
+    const id = setInterval(fetchLeaderboard, 30_000);
+    return () => clearInterval(id);
+  }, [fetchLeaderboard]);
 
   return (
     <main className="min-h-screen bg-tx-bg px-4 py-6 sm:px-6 lg:px-8">
@@ -212,9 +251,29 @@ export default function PrizePoolPage() {
               <span className="hidden md:block font-mono text-[9px] text-tx-dim uppercase tracking-wider">PNL</span>
             </div>
 
-            <div className="px-4 py-10 text-center text-[11px] font-mono text-tx-dim uppercase tracking-wider">
-              No trading data yet — start trading to appear here
-            </div>
+            {lbLoading ? (
+              <div className="px-4 py-10 text-center text-[11px] font-mono text-tx-dim uppercase tracking-wider">
+                Loading…
+              </div>
+            ) : leaderboard.length === 0 ? (
+              <div className="px-4 py-10 text-center text-[11px] font-mono text-tx-dim uppercase tracking-wider">
+                No trading data yet — start trading to appear here
+              </div>
+            ) : leaderboard.map((entry, i) => {
+              const rank = i + 1;
+              const pnlPos = entry.totalPnl >= 0;
+              return (
+                <div key={entry.wallet} className={`grid grid-cols-[36px_1fr_80px_72px] md:grid-cols-[44px_1fr_100px_68px_56px_88px] gap-x-2 px-4 py-2.5 border-b border-tx-border/50 last:border-0 hover:bg-tx-raised transition-colors ${rank === 1 ? 'bg-yellow-500/5' : ''}`}>
+                  <span className="flex items-center"><RankBadge rank={rank} /></span>
+                  <span className="flex items-center font-mono text-[11px] text-tx-muted">{shortWallet(entry.wallet)}</span>
+                  <span className="flex items-center font-mono text-[11px] font-bold text-tx-text tabular-nums">{fmtVol(entry.volume)}</span>
+                  <span className={`flex items-center font-mono text-[11px] tabular-nums md:hidden ${pnlPos ? 'text-tx-green' : 'text-tx-red'}`}>{pnlPos ? '+' : ''}{fmtVol(entry.totalPnl)}</span>
+                  <span className="hidden md:flex items-center font-mono text-[11px] text-tx-muted tabular-nums">{entry.winRate.toFixed(0)}%</span>
+                  <span className="hidden md:flex items-center font-mono text-[11px] text-tx-dim tabular-nums">{entry.trades}</span>
+                  <span className={`hidden md:flex items-center font-mono text-[11px] tabular-nums ${pnlPos ? 'text-tx-green' : 'text-tx-red'}`}>{pnlPos ? '+' : ''}{fmtVol(entry.totalPnl)}</span>
+                </div>
+              );
+            })}
 
             <div className="px-4 py-2.5 border-t border-tx-border flex items-center justify-between">
               <span className="font-mono text-[9px] text-tx-dim">
