@@ -18,8 +18,50 @@ export type AuthUser =
   | { type: 'generated'; address: string }   // browser-generated keypair
   | { type: 'guest' };                        // legacy / no-keypair guest
 
-const STORAGE_KEY  = 'csliquid_auth';
-const KEYPAIR_KEY  = 'guest_keypair';
+const STORAGE_KEY    = 'csliquid_auth';
+const KEYPAIR_KEY    = 'guest_keypair';        // legacy alias — kept so existing callsites work
+const KEYPAIR_PREFIX = 'cs-futures-wallet-';  // canonical per-address key format
+
+function keypairKeyFor(address: string): string {
+  return `${KEYPAIR_PREFIX}${address}`;
+}
+
+// Write to both the legacy fixed key and the new per-address key.
+function storeKeypairDual(kp: Keypair): void {
+  const b58 = encodeBase58(kp.secretKey);
+  localStorage.setItem(KEYPAIR_KEY, b58);
+  localStorage.setItem(keypairKeyFor(kp.publicKey.toBase58()), b58);
+}
+
+// Load a keypair for a known address — tries new format first, falls back to legacy.
+function loadKeypairForAddress(address: string): Keypair | null {
+  const raw = localStorage.getItem(keypairKeyFor(address)) ?? localStorage.getItem(KEYPAIR_KEY);
+  if (!raw) return null;
+  try { return Keypair.fromSecretKey(decodeBase58(raw)); } catch { return null; }
+}
+
+// Scan all keys for any cs-futures-wallet-* entry.
+function scanForKeypair(): Keypair | null {
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(KEYPAIR_PREFIX)) continue;
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+    try { return Keypair.fromSecretKey(decodeBase58(raw)); } catch {}
+  }
+  return null;
+}
+
+function tryLoadB58(b58: string): Keypair | null {
+  try { return Keypair.fromSecretKey(decodeBase58(b58)); } catch { return null; }
+}
+
+// Ensure the canonical cs-futures-wallet-[address] key is written (migration).
+function ensureNewKeyFormat(kp: Keypair): void {
+  const key = keypairKeyFor(kp.publicKey.toBase58());
+  if (!localStorage.getItem(key)) {
+    localStorage.setItem(key, encodeBase58(kp.secretKey));
+  }
+}
 
 interface AuthContextValue {
   user:            AuthUser | null;
@@ -29,6 +71,7 @@ interface AuthContextValue {
   loginWithWallet: (address: string) => void;
   loginAsGuest:    () => void;
   logout:          () => void;
+  getKeypair:      () => Keypair | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,50 +88,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const parsed = JSON.parse(raw) as AuthUser;
 
-        if (parsed.type === 'generated' && !keypairB58) {
-          // Keypair was cleared — treat as unauthenticated
-          localStorage.removeItem(STORAGE_KEY);
+        if (parsed.type === 'generated') {
+          const kp = loadKeypairForAddress(parsed.address);
+          if (!kp) {
+            // Keypair was cleared — fall through to auto-generate below.
+            localStorage.removeItem(STORAGE_KEY);
+          } else {
+            ensureNewKeyFormat(kp);
+            setUser(parsed);
+          }
 
         } else if (parsed.type === 'email') {
-          // Migrate old email-only records: give them a session wallet
-          const migrateOrGenerate = (): string => {
-            if (keypairB58) {
-              try { return Keypair.fromSecretKey(decodeBase58(keypairB58)).publicKey.toBase58(); } catch {}
-            }
-            const kp = Keypair.generate();
-            localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
-            return kp.publicKey.toBase58();
-          };
-          const address = migrateOrGenerate();
-          const migrated: AuthUser = { type: 'generated', address };
+          // Migrate email records to a session keypair.
+          const kp = (keypairB58 ? tryLoadB58(keypairB58) : null) ?? Keypair.generate();
+          storeKeypairDual(kp);
+          const migrated: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
           setUser(migrated);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
 
         } else if (parsed.type === 'wallet' && keypairB58) {
-          // Phantom auto-connect overwrote the session wallet auth — restore it.
-          // (Explicit Phantom logins clear guest_keypair via logout() first, so
-          //  having type:'wallet' + guest_keypair means auto-connect was the culprit.)
-          try {
-            const kp = Keypair.fromSecretKey(decodeBase58(keypairB58));
+          // Phantom auto-connect overwrote a session wallet auth — restore the session wallet.
+          const kp = tryLoadB58(keypairB58);
+          if (kp) {
+            storeKeypairDual(kp);
             const restored: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
             setUser(restored);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-          } catch {
+          } else {
             localStorage.removeItem(KEYPAIR_KEY);
             setUser(parsed);
           }
+
         } else {
           setUser(parsed);
         }
-      } else if (keypairB58) {
-        // Auto-restore: keypair in storage but no auth record → re-derive address
-        try {
-          const kp = Keypair.fromSecretKey(decodeBase58(keypairB58));
+
+      } else {
+        // No auth record — scan for an existing session keypair first.
+        const kp = scanForKeypair() ?? (keypairB58 ? tryLoadB58(keypairB58) : null);
+
+        if (kp) {
+          storeKeypairDual(kp);
           const restored: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
           setUser(restored);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-        } catch {
-          localStorage.removeItem(KEYPAIR_KEY);
+        } else {
+          // Brand new visitor — auto-generate a session wallet so they never see the auth gate.
+          const newKp = Keypair.generate();
+          storeKeypairDual(newKp);
+          const newUser: AuthUser = { type: 'generated', address: newKp.publicKey.toBase58() };
+          setUser(newUser);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
         }
       }
     } catch {}
@@ -102,51 +152,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const loginWithEmail = useCallback((_email: string) => {
-    // Email users get the same session keypair as guest mode — reuse if present
     const existing = localStorage.getItem(KEYPAIR_KEY);
-    let address: string;
-    if (existing) {
-      try {
-        address = Keypair.fromSecretKey(decodeBase58(existing)).publicKey.toBase58();
-      } catch {
-        const kp = Keypair.generate();
-        localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
-        address = kp.publicKey.toBase58();
-      }
-    } else {
-      const kp = Keypair.generate();
-      localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
-      address = kp.publicKey.toBase58();
-    }
-    persist({ type: 'generated', address });
+    const kp = (existing ? tryLoadB58(existing) : null) ?? Keypair.generate();
+    storeKeypairDual(kp);
+    persist({ type: 'generated', address: kp.publicKey.toBase58() });
   }, []);
+
   const loginWithWallet = useCallback((address: string) => persist({ type: 'wallet', address }), []);
 
   const loginAsGuest = useCallback(() => {
-    // Reuse existing keypair if present, generate new one otherwise
     const existing = localStorage.getItem(KEYPAIR_KEY);
-    let address: string;
-    if (existing) {
-      try {
-        address = Keypair.fromSecretKey(decodeBase58(existing)).publicKey.toBase58();
-      } catch {
-        const kp = Keypair.generate();
-        localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
-        address = kp.publicKey.toBase58();
-      }
-    } else {
-      const kp = Keypair.generate();
-      localStorage.setItem(KEYPAIR_KEY, encodeBase58(kp.secretKey));
-      address = kp.publicKey.toBase58();
-    }
-    persist({ type: 'generated', address });
+    const kp = (existing ? tryLoadB58(existing) : null) ?? Keypair.generate();
+    storeKeypairDual(kp);
+    persist({ type: 'generated', address: kp.publicKey.toBase58() });
   }, []);
 
   const logout = useCallback(() => {
-    // Always clear the generated keypair on explicit logout
+    // Remove canonical key and legacy key.
+    if (user?.type === 'generated') {
+      localStorage.removeItem(keypairKeyFor(user.address));
+    }
     localStorage.removeItem(KEYPAIR_KEY);
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(KEYPAIR_PREFIX))
+      .forEach(k => localStorage.removeItem(k));
     persist(null);
-  }, []);
+    // After logout, auto-generate a fresh session wallet.
+    const newKp = Keypair.generate();
+    storeKeypairDual(newKp);
+    const newUser: AuthUser = { type: 'generated', address: newKp.publicKey.toBase58() };
+    setUser(newUser);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+  }, [user]);
+
+  const getKeypair = useCallback((): Keypair | null => {
+    if (!user || user.type !== 'generated') return null;
+    return loadKeypairForAddress(user.address);
+  }, [user]);
 
   const ctxValue = useMemo(() => ({
     user,
@@ -156,7 +198,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginWithWallet,
     loginAsGuest,
     logout,
-  }), [user, hydrated, loginWithEmail, loginWithWallet, loginAsGuest, logout]);
+    getKeypair,
+  }), [user, hydrated, loginWithEmail, loginWithWallet, loginAsGuest, logout, getKeypair]);
 
   return (
     <AuthContext.Provider value={ctxValue}>

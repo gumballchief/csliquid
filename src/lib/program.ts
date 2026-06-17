@@ -526,6 +526,120 @@ export async function sendWithdrawKeypair(
     .rpc();
 }
 
+// ── LP position / wallet balance helpers ────────────────────────────────────
+
+export interface LpPositionData {
+  lpTokens:    number;   // USDC-denominated LP units (raw / 1_000_000)
+  depositedAt: Date;
+  exists:      true;
+}
+
+const LP_POSITION_DISC = [105, 241, 37, 200, 224, 2, 252, 90];
+
+/** Read the user's LpPosition PDA: owner(8+32) → lp_tokens(8) → deposited_at(8) → bump(1). */
+export async function fetchLpPosition(
+  connection: Connection,
+  owner: PublicKey,
+): Promise<LpPositionData | null> {
+  const info = await connection.getAccountInfo(findLpPositionPda(owner));
+  if (!info || info.data.length < 57) return null;
+  const data = info.data;
+  if (!LP_POSITION_DISC.every((b, i) => data[i] === b)) return null;
+  const lpTokens   = new BN(Array.from(data.slice(40, 48)), 'le').toNumber() / 1_000_000;
+  const depositedAt = new BN(Array.from(data.slice(48, 56)), 'le').toNumber();
+  return { lpTokens, depositedAt: new Date(depositedAt * 1_000), exists: true };
+}
+
+/** Read the USDC balance in the user's wallet ATA (not the trading vault). */
+export async function fetchWalletUsdcBalance(
+  connection: Connection,
+  owner: PublicKey,
+): Promise<number | null> {
+  const ata  = getUserUsdcAta(owner);
+  const info = await connection.getAccountInfo(ata);
+  if (!info || info.data.length < 72) return null;
+  return new BN(Array.from(info.data.slice(64, 72)), 'le').toNumber() / 1_000_000;
+}
+
+/** Add liquidity via session keypair — pulls USDC from wallet ATA into the LP pool. */
+export async function sendAddLiquidityKeypair(
+  connection: Connection,
+  signer: Keypair,
+  amountUsd: number,
+): Promise<string> {
+  const owner = signer.publicKey;
+  const walletLike = {
+    publicKey:           owner,
+    signTransaction:     async (tx: Transaction) => { tx.partialSign(signer); return tx; },
+    signAllTransactions: async (txs: Transaction[]) => { txs.forEach(t => t.partialSign(signer)); return txs; },
+  };
+  const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
+  const prog     = new Program(rawIdl as unknown as Idl, provider);
+
+  const ix = await prog.methods
+    .addLiquidity(toUsdcLamports(amountUsd))
+    .accounts({
+      owner,
+      lpPosition:    findLpPositionPda(owner),
+      liquidityPool: findLiquidityPoolPda(),
+      userUsdcAccount: getUserUsdcAta(owner),
+      vaultToken:    findVaultTokenPda(),
+      vaultData:     findVaultDataPda(),
+      vaultAuthority: findVaultAuthorityPda(),
+      usdcMint:      USDC_MINT,
+      tokenProgram:  TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: owner }).add(ix);
+  tx.sign(signer);
+  const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  return sig;
+}
+
+/** Remove liquidity via session keypair — redeems LP tokens for USDC into wallet ATA. */
+export async function sendRemoveLiquidityKeypair(
+  connection: Connection,
+  signer: Keypair,
+  lpTokensBN: BN,
+): Promise<string> {
+  const owner = signer.publicKey;
+  const walletLike = {
+    publicKey:           owner,
+    signTransaction:     async (tx: Transaction) => { tx.partialSign(signer); return tx; },
+    signAllTransactions: async (txs: Transaction[]) => { txs.forEach(t => t.partialSign(signer)); return txs; },
+  };
+  const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
+  const prog     = new Program(rawIdl as unknown as Idl, provider);
+
+  const ix = await prog.methods
+    .removeLiquidity(lpTokensBN)
+    .accounts({
+      owner,
+      lpPosition:    findLpPositionPda(owner),
+      liquidityPool: findLiquidityPoolPda(),
+      userUsdcAccount: getUserUsdcAta(owner),
+      vaultToken:    findVaultTokenPda(),
+      vaultData:     findVaultDataPda(),
+      vaultAuthority: findVaultAuthorityPda(),
+      usdcMint:               USDC_MINT,
+      tokenProgram:           TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram:          SystemProgram.programId,
+    })
+    .instruction();
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: owner }).add(ix);
+  tx.sign(signer);
+  const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  return sig;
+}
+
 // ── On-chain position reading ─────────────────────────────────────────────────
 
 /** Display name for each on-chain index. */
