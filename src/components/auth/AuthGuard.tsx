@@ -1,12 +1,12 @@
 'use client';
 
-import { type ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useAuth } from '@/contexts/AuthContext';
 import Logo from '@/components/layout/Logo';
 
-// Path prefixes that require a connected wallet
+// Path prefixes that require authentication
 const PROTECTED_PREFIXES = [
   '/trade',
   '/portfolio',
@@ -64,12 +64,15 @@ function WalletGate() {
 }
 
 export default function AuthGuard({ children }: { children: ReactNode }) {
-  const { connected } = useWallet();
+  const { isAuthenticated, hydrated } = useAuth();
   const pathname = usePathname();
+  // Wait one tick after mount so auth hydration and wallet adapter auto-connect
+  // both finish before we decide to show the gate.
+  const [adapterReady, setAdapterReady] = useState(false);
+  useEffect(() => { setAdapterReady(true); }, []);
 
-  if (!connected && isProtected(pathname)) {
-    return <WalletGate />;
-  }
-
-  return <>{children}</>;
+  if (!isProtected(pathname)) return <>{children}</>;
+  if (!hydrated || !adapterReady) return null;
+  if (isAuthenticated) return <>{children}</>;
+  return <WalletGate />;
 }

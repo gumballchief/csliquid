@@ -150,7 +150,10 @@ export default function PortfolioPage() {
       }
     }
     if (Object.keys(update).length > 0) {
-      setMarkPrices(prev => ({ ...prev, ...update }));
+      setMarkPrices(prev => {
+        const changed = Object.entries(update).some(([k, v]) => prev[k] !== v);
+        return changed ? { ...prev, ...update } : prev;
+      });
     }
   }, [isRealWallet, onChainPositions, chainPrices]);
 

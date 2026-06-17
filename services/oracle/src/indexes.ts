@@ -77,6 +77,24 @@ export const INDEX_DEFINITIONS: Record<string, SkinIndexDefinition> = {
       { hashName: '★ Specialist Gloves | Lt. Commander (Well-Worn)',  staticWeight: 0.03 },
     ],
   },
+  'cs500-index': {
+    id:   'cs500-index',
+    name: 'CS500 Index',
+    constituents: [
+      { hashName: 'AWP | Asiimov (Field-Tested)',                       staticWeight: 0.10 },
+      { hashName: 'AK-47 | Redline (Field-Tested)',                     staticWeight: 0.10 },
+      { hashName: '★ Karambit | Fade (Factory New)',                    staticWeight: 0.12 },
+      { hashName: "★ Sport Gloves | Pandora's Box (Field-Tested)",      staticWeight: 0.10 },
+      { hashName: 'M4A4 | Howl (Field-Tested)',                         staticWeight: 0.10 },
+      { hashName: 'AWP | Dragon Lore (Field-Tested)',                   staticWeight: 0.08 },
+      { hashName: 'AK-47 | Fire Serpent (Field-Tested)',                staticWeight: 0.08 },
+      { hashName: 'Glock-18 | Fade (Factory New)',                      staticWeight: 0.08 },
+      { hashName: 'M4A1-S | Knight (Factory New)',                      staticWeight: 0.08 },
+      { hashName: 'Desert Eagle | Blaze (Factory New)',                 staticWeight: 0.08 },
+      { hashName: 'AWP | Medusa (Field-Tested)',                        staticWeight: 0.04 },
+      { hashName: 'AK-47 | Wild Lotus (Well-Worn)',                     staticWeight: 0.04 },
+    ],
+  },
 };
 
 export const INDEX_IDS = Object.keys(INDEX_DEFINITIONS);

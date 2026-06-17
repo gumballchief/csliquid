@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 
+const TOTAL_BASKET_SIZE = 500;
+
 type SortKey = 'az' | 'category';
 
 interface Skin { id: number; name: string; category: string; }
@@ -191,7 +193,7 @@ export default function CS500Page() {
           <div className="flex items-baseline justify-between">
             <h2 className="font-mono text-[10px] font-bold text-tx-green uppercase tracking-[0.15em]">All 500 Skins</h2>
             <span className="font-mono text-[9px] text-tx-dim">
-              Showing {filtered.length} of {ALL_SKINS.length}
+              Showing {filtered.length} of {TOTAL_BASKET_SIZE}
             </span>
           </div>
 
@@ -256,7 +258,7 @@ export default function CS500Page() {
 
             <div className="px-4 py-2.5 border-t border-tx-border flex items-center justify-between">
               <span className="font-mono text-[9px] text-tx-dim">Basket composition sourced from CSFloat &amp; Skinport</span>
-              <span className="font-mono text-[9px] text-tx-dim">{filtered.length}/{ALL_SKINS.length} skins</span>
+              <span className="font-mono text-[9px] text-tx-dim">{filtered.length}/{TOTAL_BASKET_SIZE} skins</span>
             </div>
           </div>
         </section>

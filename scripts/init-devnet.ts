@@ -22,7 +22,7 @@ const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.
 const KEYPAIR_PATH   = process.env.KEYPAIR_PATH   ?? path.join(os.homedir(), ".config", "solana", "id.json");
 
 const PROGRAM_ID = new PublicKey("76QQzNaRCjcF83bf3Bx6XN67eHbthDETKdLSVccfXf9f");
-const USDC_MINT  = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+const USDC_MINT  = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
 const TOKEN_PROG = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
 const INDEX_IDS = ["awp-index", "ak47-index", "knife-index", "glove-index"] as const;

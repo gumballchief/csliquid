@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -147,16 +148,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     persist(null);
   }, []);
 
+  const ctxValue = useMemo(() => ({
+    user,
+    hydrated,
+    isAuthenticated: user !== null,
+    loginWithEmail,
+    loginWithWallet,
+    loginAsGuest,
+    logout,
+  }), [user, hydrated, loginWithEmail, loginWithWallet, loginAsGuest, logout]);
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      hydrated,
-      isAuthenticated: user !== null,
-      loginWithEmail,
-      loginWithWallet,
-      loginAsGuest,
-      logout,
-    }}>
+    <AuthContext.Provider value={ctxValue}>
       {children}
     </AuthContext.Provider>
   );

@@ -14,28 +14,34 @@
  *                  = entryPrice * (1 + (1/leverage - MMR))
  */
 
-export const MAINTENANCE_MARGIN_RATE = 0.05;   // 5 % of notional
-export const TAKER_FEE_RATE          = 0.0005; // 0.05 % of notional
+export const MAINTENANCE_MARGIN_RATE = 0.05;  // 5 % of notional (used for on-chain liquidation checks)
+export const TAKER_FEE_RATE          = 0.0005; // 0.05 % of notional (confirmed from program logs)
 export const MAX_LEVERAGE            = 20;
 export const MIN_LEVERAGE            = 1;
-export const FUNDING_INTERVAL_HOURS  = 8;      // standard 8-hour funding interval
+export const FUNDING_INTERVAL_HOURS  = 8;     // standard 8-hour funding interval
 
 // ── Price formulas ─────────────────────────────────────────────────────────
 
 /**
  * Returns the price at which the position will be auto-liquidated.
- * The `buffer` is the fraction of notional between initial margin and
- * maintenance margin — the maximum adverse move the position can absorb.
+ *
+ * Simplified model: the full initial margin (1/leverage of notional) is the
+ * maximum adverse move before liquidation.
+ *
+ *   Long  liqPrice = entryPrice × (1 - 1/leverage)
+ *   Short liqPrice = entryPrice × (1 + 1/leverage)
+ *
+ * Example: $93 entry, 25× long → $93 × (1 - 0.04) = $89.28
  */
 export function calcLiquidationPrice(
   side: 'long' | 'short',
   entryPrice: number,
   leverage: number,
 ): number {
-  const buffer = 1 / leverage - MAINTENANCE_MARGIN_RATE;
+  const fraction = 1 / leverage;
   return side === 'long'
-    ? entryPrice * (1 - buffer)
-    : entryPrice * (1 + buffer);
+    ? entryPrice * (1 - fraction)
+    : entryPrice * (1 + fraction);
 }
 
 // ── PnL ───────────────────────────────────────────────────────────────────

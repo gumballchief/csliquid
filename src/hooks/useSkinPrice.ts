@@ -50,7 +50,7 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
 
   useEffect(() => {
     const ocp = onChainPrices[skinId];
-    if (!ocp || ocp.stale || ocp.price <= 0) return;
+    if (!ocp || ocp.price <= 0) return;
     if (ocp.price === realPriceRef.current) return; // skip no-op updates
     realPriceRef.current = ocp.price;
     tickPriceRef.current = ocp.price;
@@ -70,7 +70,7 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
       // Snap tick price to API price only when no fresh on-chain price is available
       if (result.markPrice > 0) {
         const ocp = onChainPricesRef.current[id];
-        const hasChainPrice = ocp && !ocp.stale && ocp.price > 0;
+        const hasChainPrice = ocp && ocp.price > 0;
         if (!hasChainPrice) {
           realPriceRef.current = result.markPrice;
           tickPriceRef.current = result.markPrice;

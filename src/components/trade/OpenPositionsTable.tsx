@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { Keypair } from '@solana/web3.js';
 import { usePositionsStore, PerpsPosition, selectTotalUnrealizedPnl } from '@/store/positionsStore';
@@ -21,6 +21,12 @@ export default function OpenPositionsTable() {
   const updateMarkPrices    = usePositionsStore((s) => s.updateMarkPrices);
   const liquidateUnderwater = usePositionsStore((s) => s.liquidateUnderwater);
   const totalPnl            = usePositionsStore(selectTotalUnrealizedPnl);
+
+  // Stable refs so the poll effect never needs to re-run when Zustand emits a new function reference
+  const updateMarkPricesRef    = useRef(updateMarkPrices);
+  const liquidateUnderwaterRef = useRef(liquidateUnderwater);
+  updateMarkPricesRef.current    = updateMarkPrices;
+  liquidateUnderwaterRef.current = liquidateUnderwater;
   const pnlUp               = totalPnl >= 0;
 
   const { publicKey } = useWallet();
@@ -43,16 +49,15 @@ export default function OpenPositionsTable() {
         }
       });
       if (Object.keys(prices).length > 0) {
-        updateMarkPrices(prices);
-        liquidateUnderwater(prices);
+        updateMarkPricesRef.current(prices);
+        liquidateUnderwaterRef.current(prices);
       }
     };
 
     refresh();
     const timer = setInterval(refresh, POLL_MS);
     return () => clearInterval(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions.length, updateMarkPrices, liquidateUnderwater]);
+  }, [positions.length]);
 
   const handleCloseAll = () => {
     const prices = Object.fromEntries(positions.map((p) => [p.skinId, p.markPrice]));

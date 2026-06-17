@@ -230,8 +230,8 @@ export default function DocsPage() {
                 ['Network',      'Solana Devnet'],
                 ['Framework',    'Anchor'],
                 ['Max Leverage', '20×'],
-                ['Open Fee',     '2% of notional'],
-                ['Close Fee',    '2% of notional'],
+                ['Open Fee',     '0.05% of notional'],
+                ['Close Fee',    '0.05% of notional'],
                 ['Profit Cap',   '500% of collateral'],
                 ['Price Feed',   'CSFloat + Skinport (60s cadence)'],
               ]}
@@ -308,8 +308,8 @@ export default function DocsPage() {
                 ['Min collateral', '$1 USDC',            'Per position'],
                 ['Max leverage',   '20×',                'Notional = collateral × leverage'],
                 ['Max positions',  '5',                  'Per wallet, across all markets'],
-                ['Open fee',       '2%',                 'Charged on notional at open'],
-                ['Close fee',      '2%',                 'Charged on notional at close'],
+                ['Open fee',       '0.05%',              'Charged on notional at open'],
+                ['Close fee',      '0.05%',              'Charged on notional at close'],
                 ['Profit cap',     '500%',               '5× collateral maximum payout'],
               ]}
             />
@@ -347,8 +347,8 @@ Payout = min(collateral + Net PnL, collateral × 6)  -- max 500% profit`}</Pre>
             <Table
               head={['Fee Type', 'Rate', 'When Charged']}
               rows={[
-                ['Open fee',   '2% of notional',       'At position open'],
-                ['Close fee',  '2% of notional',       'At position close or liquidation'],
+                ['Open fee',   '0.05% of notional',    'At position open'],
+                ['Close fee',  '0.05% of notional',   'At position close or liquidation'],
                 ['Profit cap', '500% of collateral',   'Maximum payout limit'],
                 ['Funding',    'Variable (hourly)',     'Majority side pays minority side'],
               ]}
@@ -470,7 +470,7 @@ Liquidation threshold: Margin Ratio ≤ 5%`}</Pre>
             <Table
               head={['Source', 'LP Share', 'Notes']}
               rows={[
-                ['Trading fees (open/close)', '50%', '2% on notional each way'],
+                ['Trading fees (open/close)', '50%', '0.05% on notional each way'],
                 ['Funding fees',               '70%', 'Of the protocol cut from funding'],
                 ['Liquidations',               '44%', 'Of remaining liquidated collateral'],
               ]}

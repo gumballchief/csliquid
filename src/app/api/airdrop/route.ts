@@ -154,8 +154,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     tx.sign(admin);
 
     const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-    await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
-    console.log(`[airdrop] confirmed tx=${sig} solSeeded=${needsSol}`);
+
+    // Race confirmation against a 25-second timeout — devnet can be slow.
+    // If we timeout the tx is still in-flight; we return success so the client
+    // doesn't retry and double-send. The KV record is written below regardless.
+    await Promise.race([
+      connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }),
+      new Promise<void>((_, rej) => setTimeout(() => rej(new Error('confirm_timeout')), 25_000)),
+    ]).catch((e: Error) => {
+      if (e.message !== 'confirm_timeout') throw e;
+      console.warn(`[airdrop] confirmation timed out — tx ${sig} still in flight`);
+    });
+
+    console.log(`[airdrop] done tx=${sig} solSeeded=${needsSol}`);
 
     if (kvAvailable()) {
       await kv.set(`airdropped:${wallet}`, { ts: Date.now(), tx: sig });

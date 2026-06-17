@@ -92,7 +92,7 @@ export default function WalletButton() {
           loginWithWallet(publicKey.toBase58());
         }
       } catch {
-        loginWithWallet(publicKey.toBase58());
+        // localStorage unavailable — don't overwrite a potentially valid session
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

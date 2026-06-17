@@ -155,7 +155,10 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
     () => user?.type === 'generated' ? new PublicKey(user.address) : null,
     [user],
   );
-  const signerPubkey = (connected && publicKey) ? publicKey : generatedPubkey;
+  const signerPubkey = useMemo(
+    () => (connected && publicKey) ? publicKey : generatedPubkey,
+    [connected, publicKey, generatedPubkey],
+  );
 
   // SOL balance for display
   useEffect(() => {
@@ -179,10 +182,10 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
           ? ((accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0)
           : 0);
       })
-      .catch(() => { if (!cancelled) setWalletUsdcBalance(0); });
+      .catch(() => { if (!cancelled) setWalletUsdcBalance(null); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, publicKey, generatedPubkey, connection]);
+  }, [signerPubkey, connection]);
 
   // Vault balance — fetch for both Phantom and generated wallet users
   useEffect(() => {
@@ -193,7 +196,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
       .catch(() => { if (!cancelled) setVaultBalance(0); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, publicKey, generatedPubkey, connection]);
+  }, [signerPubkey, connection]);
 
   // Open interest from Market account
   useEffect(() => {
