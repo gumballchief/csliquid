@@ -2,15 +2,15 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { AnchorProvider, BN, Idl, Program } from '@coral-xyz/anchor';
-import { clusterApiUrl, Connection } from '@solana/web3.js';
+import { Connection } from '@solana/web3.js';
 import rawIdl from '@/lib/idl/cs_skin_futures.json';
-import { COMMITMENT, NETWORK } from '@/lib/config';
+import { COMMITMENT, RPC_URL } from '@/lib/config';
 import { findLiquidityPoolPda } from '@/lib/program';
 
 const LAMPORTS = 1_000_000;
 const YEAR_S   = 365 * 24 * 3600;
 
-const connection = new Connection(clusterApiUrl(NETWORK), COMMITMENT);
+const connection = new Connection(RPC_URL, COMMITMENT);
 
 const dummyWallet = {
   publicKey:           null as never,

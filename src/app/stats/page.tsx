@@ -45,6 +45,11 @@ interface PriceHistory {
   timestamps: number[];
 }
 
+interface OverviewStats {
+  activePositions: number;
+  uniqueTraders:   number;
+}
+
 function fmtM(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}K`;
@@ -109,6 +114,7 @@ function MiniChart({ prices, height = 56 }: { prices: number[]; height?: number 
 
 export default function StatsPage() {
   const [pool,          setPool]          = useState<PoolStats | null>(null);
+  const [overview,      setOverview]      = useState<OverviewStats | null>(null);
   const [oracleData,    setOracleData]    = useState<Record<string, OracleStatus>>({});
   const [priceHistory,  setPriceHistory]  = useState<Record<string, PriceHistory>>({});
   const [activeMarket,  setActiveMarket]  = useState<string>('awp-index');
@@ -122,6 +128,14 @@ export default function StatsPage() {
 
   useEffect(() => {
     fetch('/api/pool/stats').then(r => r.json()).then(setPool).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/stats/overview').then(r => r.json()).then(setOverview).catch(() => {});
+    const id = setInterval(() => {
+      fetch('/api/stats/overview').then(r => r.json()).then(setOverview).catch(() => {});
+    }, 30_000);
+    return () => clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -201,8 +215,8 @@ export default function StatsPage() {
           <p className="text-[10px] font-mono text-tx-dim">All markets combined</p>
         </div>
         <StatCard label="Pool APR (7d)" value={apr > 0 ? `${apr.toFixed(1)}%` : '—'} sub="LP fee yield annualized" />
-        <StatCard label="Active Positions" value="0" sub="Across all markets" />
-        <StatCard label="Unique Traders"   value="0" sub="Wallets that have traded" />
+        <StatCard label="Active Positions" value={overview ? String(overview.activePositions) : '—'} sub="Across all markets" />
+        <StatCard label="Unique Traders"   value={overview ? String(overview.uniqueTraders)   : '—'} sub="Wallets that have traded" />
       </div>
 
       {/* ── MARKET ORACLE PANEL ── */}
