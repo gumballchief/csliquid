@@ -3,7 +3,8 @@ import cron from 'node-cron';
 import { INDEX_DEFINITIONS, INDEX_IDS } from './indexes';
 import { fetchCSFloat } from './fetchers/csfloat';
 import { fetchSkinportAll, type SkinportResult } from './fetchers/skinport';
-import { rejectOutliers, computeIndexVwap } from './aggregator';
+import { fetchSteamLowest } from './fetchers/steam';
+import { computeIndexVwap } from './aggregator';
 import { insertPrice, getLatestPrice, getPriceHistory, pruneOldRecords } from './db';
 import type { ConstituentResult } from './types';
 
@@ -31,17 +32,27 @@ async function updateIndex(
         console.warn(`[oracle] csfloat ${c.hashName}: ${(err as Error).message}`);
       }
 
-      // Skinport — single aggregate price point
+      // Skinport — contributes both min and max of the platform range
       const sp = skinportMap.get(c.hashName);
       if (sp) {
-        prices.push(sp.price);
+        prices.push(sp.minPrice);
+        if (sp.maxPrice > sp.minPrice) prices.push(sp.maxPrice);
         volume += sp.quantity;
+      }
+
+      // Steam — lowest listing as an additional lower bound
+      try {
+        const steam = await fetchSteamLowest(c.hashName);
+        prices.push(steam.lowestPrice);
+      } catch {
+        // Steam is optional — proceed with CSFloat + Skinport
       }
 
       if (prices.length === 0) throw new Error(`no_prices: ${c.hashName}`);
 
-      const cleaned = rejectOutliers(prices);
-      const price   = cleaned.reduce((s, p) => s + p, 0) / cleaned.length;
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const price    = (minPrice + maxPrice) / 2;
 
       return { hashName: c.hashName, price, volume, staticWeight: c.staticWeight };
     }),

@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "src/app/api/airdrop/route.ts": { "maxDuration": 60 }
+  },
   "experimentalServices": {
     "frontend": {
       "routePrefix": "/",

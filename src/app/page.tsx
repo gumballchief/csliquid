@@ -11,7 +11,7 @@ const HERO_INDEX_CARDS = [
   { id: 'knife-index', label: 'Knife Index', skin: 'Karambit | Fade',              url: '/skins/knife-index.png' },
   { id: 'ak47-index',  label: 'AK-47 Index', skin: 'AK-47 | Wild Lotus',          url: '/skins/ak47-index.png'  },
   { id: 'glove-index', label: 'Glove Index', skin: 'Sport Gloves | Crimson Weave', url: '/skins/glove-index.png' },
-  { id: 'cs500-index', label: 'CS500 Index', skin: 'CS500 Basket',                 url: '/skins/cs500-index.png' },
+  { id: 'cs500-index', label: 'CS500 Index', skin: 'CS500 Basket',                 url: '/skins/cs500-index.svg' },
 ];
 
 // ── Market metadata ────────────────────────────────────────────────────────────

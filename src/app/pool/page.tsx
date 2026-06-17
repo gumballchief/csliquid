@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import { useAuth } from '@/contexts/AuthContext';
-import { fetchUserAccountBalance } from '@/lib/program';
+import { fetchUserAccountBalance, sendDepositKeypair, sendWithdrawKeypair } from '@/lib/program';
+import { decodeBase58 } from '@/lib/base58';
 
 interface PoolStats {
   initialized: boolean;
@@ -14,7 +15,7 @@ interface PoolStats {
   sharePrice:  number;
 }
 
-function useFmt(n: number) {
+function fmtUSD(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000)     return `$${(n / 1_000).toFixed(2)}K`;
   return `$${n.toFixed(2)}`;
@@ -50,10 +51,11 @@ function StatRow({ label, value, valueClass = 'text-tx-text' }: { label: string;
 }
 
 function InputCard({
-  title, label, sublabel, placeholder, btnLabel, btnClass, value, onChange,
+  title, label, sublabel, placeholder, btnLabel, btnClass, value, onChange, onSubmit,
 }: {
   title: string; label: string; sublabel?: string; placeholder: string;
   btnLabel: string; btnClass: string; value: string; onChange: (v: string) => void;
+  onSubmit?: () => void;
 }) {
   return (
     <Card title={title}>
@@ -71,7 +73,10 @@ function InputCard({
           placeholder={placeholder}
           className="w-full bg-tx-bg border border-tx-border rounded-sm px-3 py-2 text-[12px] font-mono text-tx-text placeholder-tx-dim focus:outline-none focus:border-tx-border2 transition-colors"
         />
-        <button className={`w-full py-2.5 rounded-sm text-[11px] font-mono font-bold uppercase tracking-wider transition-all active:scale-[0.99] ${btnClass}`}>
+        <button
+          onClick={onSubmit}
+          className={`w-full py-2.5 rounded-sm text-[11px] font-mono font-bold uppercase tracking-wider transition-all active:scale-[0.99] ${btnClass}`}
+        >
           {btnLabel}
         </button>
       </div>
@@ -89,7 +94,10 @@ export default function PoolPage() {
   const { user }                 = useAuth();
   const [vaultBalance, setVaultBalance] = useState<number | null>(null);
 
-  const generatedPubkey = user?.type === 'generated' ? new PublicKey(user.address) : null;
+  const generatedPubkey = useMemo(
+    () => user?.type === 'generated' ? new PublicKey(user.address) : null,
+    [user],
+  );
   const signerPubkey    = (connected && publicKey) ? publicKey : generatedPubkey;
 
   useEffect(() => {
@@ -99,8 +107,53 @@ export default function PoolPage() {
       .then(b => { if (!cancelled) setVaultBalance(b ?? 0); })
       .catch(() => { if (!cancelled) setVaultBalance(0); });
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, publicKey, generatedPubkey, connection]);
+
+  const [txStatus, setTxStatus] = useState<string | null>(null);
+
+  const getSigner = useCallback((): Keypair | null => {
+    if (user?.type !== 'generated') return null;
+    const raw = localStorage.getItem('guest_keypair');
+    return raw ? Keypair.fromSecretKey(decodeBase58(raw)) : null;
+  }, [user]);
+
+  const handleDeposit = useCallback(async () => {
+    const amt = parseFloat(depositAmt);
+    if (!amt || amt <= 0) return;
+    try {
+      setTxStatus('Depositing…');
+      const signer = getSigner();
+      if (!signer) throw new Error('No keypair');
+      await sendDepositKeypair(connection, signer, amt);
+      setTxStatus('Deposited!');
+      setDepositAmt('');
+      const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
+      if (b !== null) setVaultBalance(b);
+    } catch (e) {
+      setTxStatus((e as Error).message);
+    } finally {
+      setTimeout(() => setTxStatus(null), 4000);
+    }
+  }, [depositAmt, connection, getSigner]);
+
+  const handleWithdraw = useCallback(async () => {
+    const amt = parseFloat(withdrawAmt);
+    if (!amt || amt <= 0) return;
+    try {
+      setTxStatus('Withdrawing…');
+      const signer = getSigner();
+      if (!signer) throw new Error('No keypair');
+      await sendWithdrawKeypair(connection, signer, amt);
+      setTxStatus('Withdrawn!');
+      setWithdrawAmt('');
+      const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
+      if (b !== null) setVaultBalance(b);
+    } catch (e) {
+      setTxStatus((e as Error).message);
+    } finally {
+      setTimeout(() => setTxStatus(null), 4000);
+    }
+  }, [withdrawAmt, connection, getSigner]);
 
   const walletUsdcDisplay = signerPubkey
     ? (vaultBalance !== null
@@ -108,8 +161,8 @@ export default function PoolPage() {
         : '…')
     : '$0.00';
 
-  const tvl      = pool ? useFmt(pool.totalUsdc)  : '—';
-  const fees     = pool ? useFmt(pool.feesEarned) : '—';
+  const tvl      = pool ? fmtUSD(pool.totalUsdc)  : '—';
+  const fees     = pool ? fmtUSD(pool.feesEarned) : '—';
   const apr      = pool ? `${pool.apr7d.toFixed(1)}%` : '—';
   const shareP   = pool ? `$${pool.sharePrice.toFixed(4)}` : '—';
   const totalSh  = pool && pool.sharePrice > 0 ? (pool.totalUsdc / pool.sharePrice).toFixed(2) : '—';
@@ -208,6 +261,12 @@ export default function PoolPage() {
               </div>
             </Card>
 
+            {txStatus && (
+              <div className="px-4 py-2 bg-tx-raised border border-tx-border rounded-sm text-[11px] font-mono text-tx-muted">
+                {txStatus}
+              </div>
+            )}
+
             <InputCard
               title="Deposit"
               label="Amount (USDC)"
@@ -217,6 +276,7 @@ export default function PoolPage() {
               btnClass="bg-tx-green text-tx-bg hover:bg-[#00e87a]"
               value={depositAmt}
               onChange={setDepositAmt}
+              onSubmit={handleDeposit}
             />
 
             <InputCard
@@ -228,6 +288,7 @@ export default function PoolPage() {
               btnClass="bg-tx-bg border border-tx-border text-tx-muted hover:border-tx-border2"
               value={withdrawAmt}
               onChange={setWithdrawAmt}
+              onSubmit={handleWithdraw}
             />
 
             <Card title="Claim Fees">

@@ -1,9 +1,56 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Keypair, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import {
+  Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction,
+  LAMPORTS_PER_SOL,
+} from '@solana/web3.js';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { decodeBase58 } from '@/lib/base58';
+
+// SPL / ATA constants — no @solana/spl-token dependency
+const TOKEN_PROGRAM   = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const ATP             = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+const USDC_MINT       = new PublicKey('Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
+
+function findAta(owner: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM.toBuffer(), USDC_MINT.toBuffer()],
+    ATP,
+  )[0];
+}
+
+/** SPL Token transfer instruction (index 3). */
+function makeTransferIx(source: PublicKey, dest: PublicKey, authority: PublicKey, amount: bigint): TransactionInstruction {
+  const data = Buffer.alloc(9);
+  data.writeUInt8(3, 0);
+  data.writeBigUInt64LE(amount, 1);
+  return new TransactionInstruction({
+    programId: TOKEN_PROGRAM,
+    keys: [
+      { pubkey: source,    isSigner: false, isWritable: true },
+      { pubkey: dest,      isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true,  isWritable: false },
+    ],
+    data,
+  });
+}
+
+/** Create ATA (idempotent) instruction. */
+function makeCreateAtaIx(payer: PublicKey, ata: PublicKey, owner: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: ATP,
+    keys: [
+      { pubkey: payer,               isSigner: true,  isWritable: true  },
+      { pubkey: ata,                 isSigner: false, isWritable: true  },
+      { pubkey: owner,               isSigner: false, isWritable: false },
+      { pubkey: USDC_MINT,           isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM,       isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from([1]), // 1 = CreateIdempotent
+  });
+}
 
 interface Props {
   address: string;
@@ -11,25 +58,40 @@ interface Props {
 }
 
 export default function SendModal({ address, onClose }: Props) {
-  const { connection }  = useConnection();
+  const { connection } = useConnection();
 
-  const [token,      setToken]     = useState<'SOL' | 'USDC'>('SOL');
-  const [recipient,  setRecipient] = useState('');
-  const [amount,     setAmount]    = useState('');
-  const [balance,    setBalance]   = useState<number | null>(null);
-  const [status,     setStatus]    = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
-  const [errorMsg,   setErrorMsg]  = useState('');
-  const [txSig,      setTxSig]     = useState('');
+  const [token,       setToken]      = useState<'SOL' | 'USDC'>('SOL');
+  const [recipient,   setRecipient]  = useState('');
+  const [amount,      setAmount]     = useState('');
+  const [solBalance,  setSolBalance] = useState<number | null>(null);
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [status,      setStatus]     = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const [errorMsg,    setErrorMsg]   = useState('');
+  const [txSig,       setTxSig]      = useState('');
 
+  // Fetch SOL balance on mount
   useEffect(() => {
-    async function fetch() {
-      try {
-        const lamports = await connection.getBalance(new PublicKey(address));
-        setBalance(lamports / LAMPORTS_PER_SOL);
-      } catch { setBalance(null); }
-    }
-    fetch();
+    connection.getBalance(new PublicKey(address))
+      .then(lam => setSolBalance(lam / LAMPORTS_PER_SOL))
+      .catch(() => setSolBalance(null));
   }, [address, connection]);
+
+  // Fetch USDC balance when USDC tab selected
+  useEffect(() => {
+    if (token !== 'USDC') return;
+    setUsdcBalance(null);
+    const pk = new PublicKey(address);
+    const ata = findAta(pk);
+    connection.getTokenAccountBalance(ata)
+      .then(r => setUsdcBalance(r.value.uiAmount ?? 0))
+      .catch(() => setUsdcBalance(0));
+  }, [token, address, connection]);
+
+  const balance   = token === 'SOL' ? solBalance : usdcBalance;
+  const tokenUnit = token === 'SOL' ? 'SOL' : 'USDC';
+  const maxAmt    = token === 'SOL'
+    ? Math.max(0, (solBalance ?? 0) - 0.001)
+    : (usdcBalance ?? 0);
 
   async function handleSend() {
     setErrorMsg('');
@@ -41,8 +103,12 @@ export default function SendModal({ address, onClose }: Props) {
     try { toPublicKey = new PublicKey(recipient.trim()); }
     catch { setErrorMsg('Invalid Solana address.'); return; }
 
-    if (token === 'SOL' && balance !== null && amt > balance - 0.001) {
+    if (token === 'SOL' && solBalance !== null && amt > maxAmt) {
       setErrorMsg('Insufficient balance (reserve 0.001 SOL for fees).');
+      return;
+    }
+    if (token === 'USDC' && usdcBalance !== null && amt > usdcBalance) {
+      setErrorMsg('Insufficient USDC balance.');
       return;
     }
 
@@ -51,15 +117,27 @@ export default function SendModal({ address, onClose }: Props) {
 
     setStatus('pending');
     try {
-      const senderKp   = Keypair.fromSecretKey(decodeBase58(raw));
+      const senderKp = Keypair.fromSecretKey(decodeBase58(raw));
       const { blockhash } = await connection.getLatestBlockhash();
 
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderKp.publicKey })
-        .add(SystemProgram.transfer({
-          fromPubkey: senderKp.publicKey,
-          toPubkey:   toPublicKey,
-          lamports:   Math.round(amt * LAMPORTS_PER_SOL),
-        }));
+      let tx: Transaction;
+
+      if (token === 'SOL') {
+        tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderKp.publicKey })
+          .add(SystemProgram.transfer({
+            fromPubkey: senderKp.publicKey,
+            toPubkey:   toPublicKey,
+            lamports:   Math.round(amt * LAMPORTS_PER_SOL),
+          }));
+      } else {
+        const senderAta    = findAta(senderKp.publicKey);
+        const recipientAta = findAta(toPublicKey);
+        const lamports     = BigInt(Math.round(amt * 1_000_000));
+
+        tx = new Transaction({ recentBlockhash: blockhash, feePayer: senderKp.publicKey })
+          .add(makeCreateAtaIx(senderKp.publicKey, recipientAta, toPublicKey))
+          .add(makeTransferIx(senderAta, recipientAta, senderKp.publicKey, lamports));
+      }
 
       tx.sign(senderKp);
       const sig = await connection.sendRawTransaction(tx.serialize());
@@ -67,8 +145,16 @@ export default function SendModal({ address, onClose }: Props) {
 
       setTxSig(sig);
       setStatus('success');
-      const newBal = await connection.getBalance(senderKp.publicKey);
-      setBalance(newBal / LAMPORTS_PER_SOL);
+
+      // Refresh balances after send
+      connection.getBalance(senderKp.publicKey)
+        .then(lam => setSolBalance(lam / LAMPORTS_PER_SOL))
+        .catch(() => {});
+      if (token === 'USDC') {
+        connection.getTokenAccountBalance(findAta(senderKp.publicKey))
+          .then(r => setUsdcBalance(r.value.uiAmount ?? 0))
+          .catch(() => setUsdcBalance(0));
+      }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : 'Transaction failed.');
       setStatus('error');
@@ -129,22 +215,17 @@ export default function SendModal({ address, onClose }: Props) {
           ) : (
             <>
               {/* Token tabs */}
-              <div
-                className="flex gap-1 p-1"
-                style={{ background: '#0a0b0d', borderRadius: 3 }}
-              >
+              <div className="flex gap-1 p-1" style={{ background: '#0a0b0d', borderRadius: 3 }}>
                 {(['SOL', 'USDC'] as const).map(t => (
                   <button
                     key={t}
-                    onClick={() => setToken(t)}
-                    disabled={t === 'USDC'}
+                    onClick={() => { setToken(t); setAmount(''); setErrorMsg(''); }}
                     className={`flex-1 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition-colors ${
                       token === t ? 'text-[#e8eaed]' : 'text-[#6b7280] hover:text-[#9ca3af]'
-                    } ${t === 'USDC' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    }`}
                     style={token === t ? { background: '#1e2025', borderRadius: 3 } : { borderRadius: 3 }}
-                    title={t === 'USDC' ? 'Coming soon' : undefined}
                   >
-                    {t}{t === 'USDC' ? ' (soon)' : ''}
+                    {t}
                   </button>
                 ))}
               </div>
@@ -153,7 +234,7 @@ export default function SendModal({ address, onClose }: Props) {
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Balance</span>
                 <span className="font-mono text-[11px] text-[#e8eaed] tabular-nums">
-                  {balance === null ? '—' : `${balance.toFixed(4)} SOL`}
+                  {balance === null ? '…' : `${balance.toFixed(token === 'SOL' ? 4 : 2)} ${tokenUnit}`}
                 </span>
               </div>
 
@@ -175,7 +256,7 @@ export default function SendModal({ address, onClose }: Props) {
               {/* Amount */}
               <div>
                 <label className="block font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280] mb-1.5">
-                  Amount (SOL)
+                  Amount ({tokenUnit})
                 </label>
                 <div className="relative">
                   <input
@@ -188,10 +269,10 @@ export default function SendModal({ address, onClose }: Props) {
                     className="w-full px-3 py-2 pr-14 font-mono text-[12px] text-[#e8eaed] placeholder-[#374151] focus:outline-none focus:border-[#3a3d45] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     style={{ background: '#0a0b0d', border: '1px solid #2a2d35', borderRadius: 3 }}
                   />
-                  {balance !== null && (
+                  {balance !== null && balance > 0 && (
                     <button
                       type="button"
-                      onClick={() => setAmount(Math.max(0, balance - 0.001).toFixed(4))}
+                      onClick={() => setAmount(maxAmt.toFixed(token === 'SOL' ? 4 : 2))}
                       className="absolute right-2 top-1/2 -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.06em] text-[#00ff88] hover:text-[#00e87a] transition-colors px-1.5 py-0.5"
                       style={{ background: '#1e2025', borderRadius: 2 }}
                     >
@@ -224,7 +305,7 @@ export default function SendModal({ address, onClose }: Props) {
                     </svg>
                     Sending…
                   </span>
-                ) : 'Send SOL'}
+                ) : `Send ${tokenUnit}`}
               </button>
             </>
           )}

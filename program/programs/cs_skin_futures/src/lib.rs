@@ -43,6 +43,7 @@ use instructions::{
     initialize_market::*, initialize_pool::*, initialize_price_feed::*, initialize_vault::*,
     initialize_vault_token::*,
     liquidate::*, open_position::*, push_price::*, remove_liquidity::*,
+    set_market_authority::*, set_price_feed_authority::*,
     update_funding_rate::*, update_oracle::*, withdraw::*,
 };
 
@@ -61,6 +62,24 @@ pub mod cs_skin_futures {
         skin_id: String,
     ) -> Result<()> {
         instructions::initialize_price_feed::handler(ctx, skin_id)
+    }
+
+    /// Transfer the push authority on a PriceFeed to a new keypair.
+    /// Must be signed by the current authority.
+    pub fn set_price_feed_authority(
+        ctx: Context<SetPriceFeedAuthority>,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        instructions::set_price_feed_authority::handler(ctx, new_authority)
+    }
+
+    /// Transfer the authority on a Market to a new keypair.
+    /// Must be signed by the current authority.
+    pub fn set_market_authority(
+        ctx: Context<SetMarketAuthority>,
+        new_authority: Pubkey,
+    ) -> Result<()> {
+        instructions::set_market_authority::handler(ctx, new_authority)
     }
 
     /// Push a fresh VWAP price from the oracle service.  Only the registered

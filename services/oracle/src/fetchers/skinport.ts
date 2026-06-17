@@ -7,7 +7,8 @@ interface SkinportItem {
 }
 
 export interface SkinportResult {
-  price:    number;
+  minPrice: number;
+  maxPrice: number;
   quantity: number;
 }
 
@@ -28,10 +29,12 @@ export async function fetchSkinportAll(): Promise<Map<string, SkinportResult>> {
   const map   = new Map<string, SkinportResult>();
 
   for (const item of items) {
-    const price = item.min_price ?? item.mean_price;
-    if (price && price > 0) {
+    const minPrice = item.min_price ?? item.mean_price;
+    const maxPrice = item.max_price ?? item.mean_price;
+    if (minPrice && minPrice > 0) {
       map.set(item.market_hash_name, {
-        price,
+        minPrice,
+        maxPrice: maxPrice && maxPrice > 0 ? maxPrice : minPrice,
         quantity: item.quantity ?? 0,
       });
     }

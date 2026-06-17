@@ -1,9 +1,24 @@
 import { NextResponse } from 'next/server';
+import { kv } from '@vercel/kv';
 import {
   BulkIndexPrices,
   getPriceCache,
   setPriceCache,
 } from '@/lib/priceCache';
+
+const SNAPSHOT_TTL_SEC = 90_000; // 25 hours — long enough to survive overnight gaps
+
+async function store24hSnapshot(prices: Record<string, number>): Promise<void> {
+  try {
+    await Promise.all(
+      Object.entries(prices).map(([key, price]) =>
+        price > 0
+          ? kv.set(`price_24h:${key}`, price, { ex: SNAPSHOT_TTL_SEC, nx: true })
+          : Promise.resolve(),
+      ),
+    );
+  } catch { /* KV unavailable — silently skip */ }
+}
 
 // Re-export so skinPriceService can import the type from here
 export type { BulkIndexPrices };
@@ -195,6 +210,14 @@ export async function GET() {
     const data: BulkIndexPrices = { awp, ak47, knife, glove, cs500, updatedAt: Date.now() };
     if (awp > 0 || ak47 > 0 || knife > 0 || glove > 0 || cs500 > 0) {
       setPriceCache(data);
+      // Store 24h snapshot — only write when we have a fresh fetch (not stale cache)
+      void store24hSnapshot({
+        'awp-index':   awp,
+        'ak47-index':  ak47,
+        'knife-index': knife,
+        'glove-index': glove,
+        'cs500-index': cs500,
+      });
     }
 
     return NextResponse.json(data);

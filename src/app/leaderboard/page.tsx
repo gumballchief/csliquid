@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 type Tab = 'pnl' | 'volume';
 
@@ -37,7 +37,7 @@ export default function LeaderboardPage() {
   const [traders, setTraders] = useState<TraderStats[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchLeaderboard = useCallback(() => {
     setLoading(true);
     fetch('/api/leaderboard')
       .then(r => r.json())
@@ -47,6 +47,12 @@ export default function LeaderboardPage() {
       })
       .catch(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    fetchLeaderboard();
+    const timer = setInterval(fetchLeaderboard, 30_000);
+    return () => clearInterval(timer);
+  }, [fetchLeaderboard]);
 
   const sorted = [...traders].sort((a, b) =>
     tab === 'pnl' ? b.totalPnl - a.totalPnl : b.volume - a.volume

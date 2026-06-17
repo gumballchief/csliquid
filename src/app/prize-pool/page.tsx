@@ -126,7 +126,7 @@ export default function PrizePoolPage() {
             <div className="order-1 lg:order-2 h-64 sm:h-80 lg:h-auto min-h-[280px] border-b lg:border-b-0 lg:border-l border-tx-border bg-tx-raised flex items-center justify-center p-6">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="https://community.fastly.steamstatic.com/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NVknk9gCBkL0YjYEuawWpXSQov38bXbKPymoS_GVh3LLROifam1aMiGgqHatZ_kO_khoPJYuKuY-PFkmsAs1Jt2L_UrIe8hFI3-uS5JpWvNGfMp112eOW/360fx360f"
+                src="/skins/awp-dragon-lore.png"
                 alt="AWP | Dragon Lore (Factory New)"
                 width={260}
                 height={260}
