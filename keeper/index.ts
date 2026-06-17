@@ -160,53 +160,180 @@ async function alert(message: string): Promise<void> {
 
 // ── 1. PRICE PUSHER ───────────────────────────────────────────────────────────
 
-interface ApiPrices {
-  awp:       number;
-  ak47:      number;
-  knife:     number;
-  glove:     number;
-  cs500:     number;
-  updatedAt: number;
-}
-
-const PRICES_API_URL        = 'https://cs-skin-futures.vercel.app/api/prices';
 const PRICE_HISTORY_API_URL = 'https://cs-skin-futures.vercel.app/api/price-history';
-const PRICES_CACHE_TTL = 2 * 60_000;  // 2 min
 
-let _pricesCache:   ApiPrices | null = null;
-let _pricesCacheTs = 0;
+// ── Index constituents ─────────────────────────────────────────────────────────
 
-async function fetchIndexPrices(): Promise<ApiPrices> {
-  if (_pricesCache && Date.now() - _pricesCacheTs < PRICES_CACHE_TTL) {
-    return _pricesCache;
-  }
-  const ac = new AbortController();
-  const t  = setTimeout(() => ac.abort(), 10_000);
-  try {
-    const res = await fetch(PRICES_API_URL, { signal: ac.signal as any });
-    clearTimeout(t);
-    if (!res.ok) throw new Error(`prices API HTTP ${res.status}`);
-    const data     = (await res.json()) as ApiPrices;
-    _pricesCache   = data;
-    _pricesCacheTs = Date.now();
-    return data;
-  } catch (err) {
-    clearTimeout(t);
-    throw err;
-  }
-}
-
-const INDEX_TO_FIELD: Record<IndexId, keyof Omit<ApiPrices, 'updatedAt'>> = {
-  'AWP':   'awp',
-  'AK47':  'ak47',
-  'KNIFE': 'knife',
-  'GLOVE': 'glove',
-  'CS500': 'cs500',
+const INDEX_CONSTITUENTS: Record<IndexId, string[]> = {
+  AWP: [
+    'AWP | Asiimov (Field-Tested)',
+    'AWP | Fever Dream (Field-Tested)',
+    'AWP | Atheris (Field-Tested)',
+    'AWP | Hyper Beast (Field-Tested)',
+    'AWP | Neo-Noir (Field-Tested)',
+    'AWP | Wildfire (Field-Tested)',
+    'AWP | Oni Taiji (Field-Tested)',
+    'AWP | Medusa (Field-Tested)',
+    'AWP | Lightning Strike (Factory New)',
+    'AWP | Dragon Lore (Factory New)',
+  ],
+  AK47: [
+    'AK-47 | Redline (Field-Tested)',
+    'AK-47 | Bloodsport (Field-Tested)',
+    'AK-47 | Asiimov (Field-Tested)',
+    'AK-47 | The Empress (Field-Tested)',
+    'AK-47 | Aquamarine Revenge (Field-Tested)',
+    'AK-47 | Neon Rider (Well-Worn)',
+    'AK-47 | Vulcan (Field-Tested)',
+    'AK-47 | Case Hardened (Field-Tested)',
+    'AK-47 | Fire Serpent (Field-Tested)',
+    'AK-47 | Wild Lotus (Well-Worn)',
+  ],
+  KNIFE: [
+    '★ Karambit | Fade (Factory New)',
+    '★ Butterfly Knife | Fade (Factory New)',
+    '★ M9 Bayonet | Fade (Factory New)',
+    '★ Karambit | Doppler (Factory New)',
+    '★ Butterfly Knife | Doppler (Factory New)',
+    '★ Bayonet | Fade (Factory New)',
+    '★ Flip Knife | Fade (Factory New)',
+    '★ Karambit | Tiger Tooth (Factory New)',
+    '★ Butterfly Knife | Tiger Tooth (Factory New)',
+    '★ Skeleton Knife | Fade (Factory New)',
+  ],
+  GLOVE: [
+    "★ Sport Gloves | Pandora's Box (Field-Tested)",
+    '★ Sport Gloves | Vice (Field-Tested)',
+    '★ Specialist Gloves | Crimson Kimono (Well-Worn)',
+    '★ Driver Gloves | King Snake (Field-Tested)',
+    '★ Hand Wraps | Cobalt Skulls (Field-Tested)',
+    '★ Moto Gloves | Spearmint (Field-Tested)',
+    '★ Sport Gloves | Amphibious (Well-Worn)',
+    '★ Hydra Gloves | Case Hardened (Well-Worn)',
+    '★ Bloodhound Gloves | Charred (Well-Worn)',
+    '★ Specialist Gloves | Lt. Commander (Well-Worn)',
+  ],
+  CS500: [
+    'AWP | Asiimov (Field-Tested)',
+    'AK-47 | Redline (Field-Tested)',
+    '★ Karambit | Fade (Factory New)',
+    "★ Sport Gloves | Pandora's Box (Field-Tested)",
+    'M4A4 | Howl (Field-Tested)',
+    'AWP | Dragon Lore (Field-Tested)',
+    'AK-47 | Fire Serpent (Field-Tested)',
+    'Glock-18 | Fade (Factory New)',
+    'M4A1-S | Knight (Factory New)',
+    'Desert Eagle | Blaze (Factory New)',
+  ],
 };
 
+// ── Source fetchers ────────────────────────────────────────────────────────────
+
+async function fetchCSFloatPrices(hashName: string): Promise<number[]> {
+  const params = new URLSearchParams({
+    market_hash_name: hashName, type: 'buy_now', sort_by: 'lowest_price', limit: '50',
+  });
+  const res = await fetch(`https://csfloat.com/api/v1/listings?${params}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible)', 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(10_000),
+  } as any);
+  if (!res.ok) throw new Error(`csfloat_${res.status}`);
+  const body = (await res.json()) as { data?: Array<{ price: number }> };
+  return (body.data ?? []).map(l => l.price / 100);
+}
+
+let _skinportCache: Map<string, { min: number; max: number }> | null = null;
+let _skinportCacheTs = 0;
+
+async function fetchSkinportMap(): Promise<Map<string, { min: number; max: number }>> {
+  if (_skinportCache && Date.now() - _skinportCacheTs < 5 * 60_000) return _skinportCache;
+  const res = await fetch('https://api.skinport.com/v1/items?app_id=730&currency=USD', {
+    headers: { 'Accept': 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  } as any);
+  if (!res.ok) throw new Error(`skinport_${res.status}`);
+  const items = (await res.json()) as Array<{
+    market_hash_name: string; min_price: number | null; max_price: number | null; mean_price: number | null;
+  }>;
+  const map = new Map<string, { min: number; max: number }>();
+  for (const item of items) {
+    const min = item.min_price ?? item.mean_price;
+    const max = item.max_price ?? item.mean_price;
+    if (min && min > 0) map.set(item.market_hash_name, { min, max: max && max > 0 ? max : min });
+  }
+  _skinportCache   = map;
+  _skinportCacheTs = Date.now();
+  return map;
+}
+
+async function fetchSteamLowest(hashName: string): Promise<number> {
+  const params = new URLSearchParams({ appid: '730', market_hash_name: hashName, currency: '1' });
+  const res = await fetch(`https://steamcommunity.com/market/priceoverview/?${params}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0' },
+    signal: AbortSignal.timeout(8_000),
+  } as any);
+  if (!res.ok) throw new Error(`steam_${res.status}`);
+  const body = (await res.json()) as { success: boolean; lowest_price?: string; median_price?: string };
+  if (!body.success) throw new Error('steam_no_data');
+  const parse = (s?: string) => s ? parseFloat(s.replace(/[^0-9.]/g, '')) || 0 : 0;
+  return parse(body.lowest_price) || parse(body.median_price);
+}
+
+// ── EWMA smoother (α=0.15 → ~6 cycles to absorb a step change) ────────────────
+
+const EWMA_ALPHA = 0.15;
+const ewmaState: Record<IndexId, number> = { AWP: 0, AK47: 0, KNIFE: 0, GLOVE: 0, CS500: 0 };
+
+function applyEwma(indexId: IndexId, sample: number): number {
+  if (ewmaState[indexId] <= 0) { ewmaState[indexId] = sample; return sample; }
+  ewmaState[indexId] = EWMA_ALPHA * sample + (1 - EWMA_ALPHA) * ewmaState[indexId];
+  return ewmaState[indexId];
+}
+
+// ── Main price computation ─────────────────────────────────────────────────────
+
 async function computeIndexPrice(indexId: IndexId): Promise<number> {
-  const prices = await fetchIndexPrices();
-  return prices[INDEX_TO_FIELD[indexId]] ?? 0;
+  const skins = INDEX_CONSTITUENTS[indexId];
+  const allPrices: number[] = [];
+
+  // Fetch Skinport in one bulk call (shared across all indices per cycle via cache)
+  let spMap = new Map<string, { min: number; max: number }>();
+  try { spMap = await fetchSkinportMap(); } catch {}
+
+  // Per-constituent: collect prices from CSFloat, Skinport, Steam
+  await Promise.allSettled(skins.map(async (hashName) => {
+    // CSFloat — individual listings
+    try {
+      const cfPrices = await fetchCSFloatPrices(hashName);
+      allPrices.push(...cfPrices.filter(p => p > 0));
+    } catch {}
+
+    // Skinport — min and max for this skin
+    const sp = spMap.get(hashName);
+    if (sp) {
+      allPrices.push(sp.min);
+      if (sp.max > sp.min) allPrices.push(sp.max);
+    }
+
+    // Steam — lowest listing
+    try {
+      const steamLow = await fetchSteamLowest(hashName);
+      if (steamLow > 0) allPrices.push(steamLow);
+    } catch {}
+  }));
+
+  if (allPrices.length === 0) throw new Error(`no_prices: ${indexId}`);
+
+  const globalMin = Math.min(...allPrices);
+  const globalMax = Math.max(...allPrices);
+  const midPrice  = (globalMin + globalMax) / 2;
+
+  console.log(
+    `[PRICE] ${indexId}: ${allPrices.length} data points, ` +
+    `low=$${globalMin.toFixed(2)} high=$${globalMax.toFixed(2)} mid=$${midPrice.toFixed(2)}`,
+  );
+
+  return applyEwma(indexId, midPrice);
 }
 
 async function runPricePusher(): Promise<void> {
