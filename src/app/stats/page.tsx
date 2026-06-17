@@ -50,6 +50,13 @@ interface OverviewStats {
   uniqueTraders:   number;
 }
 
+interface MarketStat {
+  volume24h:   number;
+  fundingRate: number;
+  longOI:      number;
+  shortOI:     number;
+}
+
 function fmtM(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}K`;
@@ -117,6 +124,7 @@ export default function StatsPage() {
   const [overview,      setOverview]      = useState<OverviewStats | null>(null);
   const [oracleData,    setOracleData]    = useState<Record<string, OracleStatus>>({});
   const [priceHistory,  setPriceHistory]  = useState<Record<string, PriceHistory>>({});
+  const [marketStats,   setMarketStats]   = useState<Record<string, MarketStat>>({});
   const [activeMarket,  setActiveMarket]  = useState<string>('awp-index');
   // useRef for uptimeStart — doesn't need to trigger re-renders
   const uptimeStartRef  = useRef<number>(0);
@@ -165,7 +173,23 @@ export default function StatsPage() {
     return () => clearInterval(id);
   }, []);
 
-  const totalVol24h = prices.reduce((s, p) => s + p.volume24h, 0);
+  useEffect(() => {
+    async function fetchMarketStats() {
+      const results: Record<string, MarketStat> = {};
+      for (const id of MARKET_IDS) {
+        try {
+          const r = await fetch(`/api/stats/market?market=${id}`);
+          results[id] = await r.json();
+        } catch {}
+      }
+      setMarketStats(results);
+    }
+    fetchMarketStats();
+    const id = setInterval(fetchMarketStats, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalVol24h = MARKET_IDS.reduce((s, id) => s + (marketStats[id]?.volume24h ?? 0), 0);
   const fees24h     = pool ? pool.feesEarned : 0;
   const tvl         = pool ? pool.totalUsdc  : 0;
   const apr         = pool ? pool.apr7d      : 0;
@@ -214,7 +238,7 @@ export default function StatsPage() {
           </p>
           <p className="text-[10px] font-mono text-tx-dim">All markets combined</p>
         </div>
-        <StatCard label="Pool APR (7d)" value={apr > 0 ? `${apr.toFixed(1)}%` : '—'} sub="LP fee yield annualized" />
+        <StatCard label="Pool APR (7d)" value={pool?.initialized ? `${apr.toFixed(1)}%` : '—'} sub="LP fee yield annualized" />
         <StatCard label="Active Positions" value={overview ? String(overview.activePositions) : '—'} sub="Across all markets" />
         <StatCard label="Unique Traders"   value={overview ? String(overview.uniqueTraders)   : '—'} sub="Wallets that have traded" />
       </div>
@@ -372,9 +396,12 @@ export default function StatsPage() {
             </thead>
             <tbody>
               {prices.map((p, i) => {
-                const id  = MARKET_IDS[i];
-                const up  = p.changePct24h >= 0;
-                const fup = p.fundingRate >= 0;
+                const id   = MARKET_IDS[i];
+                const ms   = marketStats[id];
+                const up   = p.changePct24h >= 0;
+                const fr   = ms?.fundingRate ?? 0;
+                const fup  = fr >= 0;
+                const vol  = ms?.volume24h ?? 0;
                 return (
                   <tr key={id} className="border-b border-tx-border/50 last:border-b-0 hover:bg-tx-raised transition-colors">
                     <td className="px-4 py-3">
@@ -403,13 +430,13 @@ export default function StatsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-[11px] font-mono tabular-nums text-tx-muted">
-                        {p.volume24h > 0 ? fmtShort(p.volume24h) : '—'}
+                        {vol > 0 ? fmtShort(vol) : '$0'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {p.markPrice > 0 ? (
+                      {ms ? (
                         <span className={`text-[11px] font-mono tabular-nums ${fup ? 'text-tx-green' : 'text-tx-red'}`}>
-                          {fup ? '+' : ''}{(p.fundingRate * 100).toFixed(4)}%
+                          {fup ? '+' : ''}{(fr * 100).toFixed(4)}%
                         </span>
                       ) : (
                         <span className="text-[11px] font-mono text-tx-dim">—</span>

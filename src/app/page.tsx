@@ -266,9 +266,9 @@ export default function LandingPage() {
             />
             <PoolStat
               label="Pool APR"
-              value={pool === null ? '…' : pool.initialized && pool.apr7d > 0 ? pool.apr7d.toFixed(1) + '%' : '—'}
+              value={pool === null ? '…' : pool.initialized ? pool.apr7d.toFixed(1) + '%' : '—'}
               sub="annualised"
-              highlight={pool?.initialized && pool.apr7d > 0}
+              highlight={pool?.initialized}
             />
           </div>
         </div>

@@ -1,0 +1,88 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.INDEX_IDS = exports.INDEX_DEFINITIONS = void 0;
+exports.INDEX_DEFINITIONS = {
+    'awp-index': {
+        id: 'awp-index',
+        name: 'AWP Index',
+        constituents: [
+            { hashName: 'AWP | Asiimov (Field-Tested)', staticWeight: 0.18 },
+            { hashName: 'AWP | Fever Dream (Field-Tested)', staticWeight: 0.16 },
+            { hashName: 'AWP | Atheris (Field-Tested)', staticWeight: 0.14 },
+            { hashName: 'AWP | Hyper Beast (Field-Tested)', staticWeight: 0.12 },
+            { hashName: 'AWP | Neo-Noir (Field-Tested)', staticWeight: 0.11 },
+            { hashName: 'AWP | Wildfire (Field-Tested)', staticWeight: 0.09 },
+            { hashName: 'AWP | Oni Taiji (Field-Tested)', staticWeight: 0.07 },
+            { hashName: 'AWP | Medusa (Field-Tested)', staticWeight: 0.05 },
+            { hashName: 'AWP | Lightning Strike (Factory New)', staticWeight: 0.05 },
+            { hashName: 'AWP | Dragon Lore (Factory New)', staticWeight: 0.03 },
+        ],
+    },
+    'ak47-index': {
+        id: 'ak47-index',
+        name: 'AK-47 Index',
+        constituents: [
+            { hashName: 'AK-47 | Redline (Field-Tested)', staticWeight: 0.20 },
+            { hashName: 'AK-47 | Bloodsport (Field-Tested)', staticWeight: 0.15 },
+            { hashName: 'AK-47 | Asiimov (Field-Tested)', staticWeight: 0.14 },
+            { hashName: 'AK-47 | The Empress (Field-Tested)', staticWeight: 0.12 },
+            { hashName: 'AK-47 | Aquamarine Revenge (Field-Tested)', staticWeight: 0.10 },
+            { hashName: 'AK-47 | Neon Rider (Well-Worn)', staticWeight: 0.09 },
+            { hashName: 'AK-47 | Vulcan (Field-Tested)', staticWeight: 0.07 },
+            { hashName: 'AK-47 | Case Hardened (Field-Tested)', staticWeight: 0.06 },
+            { hashName: 'AK-47 | Fire Serpent (Field-Tested)', staticWeight: 0.04 },
+            { hashName: 'AK-47 | Wild Lotus (Well-Worn)', staticWeight: 0.03 },
+        ],
+    },
+    'knife-index': {
+        id: 'knife-index',
+        name: 'Knife Index',
+        constituents: [
+            { hashName: '★ Karambit | Fade (Factory New)', staticWeight: 0.16 },
+            { hashName: '★ Butterfly Knife | Fade (Factory New)', staticWeight: 0.14 },
+            { hashName: '★ M9 Bayonet | Fade (Factory New)', staticWeight: 0.13 },
+            { hashName: '★ Karambit | Doppler (Factory New)', staticWeight: 0.12 },
+            { hashName: '★ Butterfly Knife | Doppler (Factory New)', staticWeight: 0.11 },
+            { hashName: '★ Bayonet | Fade (Factory New)', staticWeight: 0.10 },
+            { hashName: '★ Flip Knife | Fade (Factory New)', staticWeight: 0.09 },
+            { hashName: '★ Karambit | Tiger Tooth (Factory New)', staticWeight: 0.07 },
+            { hashName: '★ Butterfly Knife | Tiger Tooth (Factory New)', staticWeight: 0.05 },
+            { hashName: '★ Skeleton Knife | Fade (Factory New)', staticWeight: 0.03 },
+        ],
+    },
+    'glove-index': {
+        id: 'glove-index',
+        name: 'Glove Index',
+        constituents: [
+            { hashName: "★ Sport Gloves | Pandora's Box (Field-Tested)", staticWeight: 0.16 },
+            { hashName: '★ Sport Gloves | Vice (Field-Tested)', staticWeight: 0.14 },
+            { hashName: '★ Specialist Gloves | Crimson Kimono (Well-Worn)', staticWeight: 0.13 },
+            { hashName: '★ Driver Gloves | King Snake (Field-Tested)', staticWeight: 0.12 },
+            { hashName: '★ Hand Wraps | Cobalt Skulls (Field-Tested)', staticWeight: 0.11 },
+            { hashName: '★ Moto Gloves | Spearmint (Field-Tested)', staticWeight: 0.10 },
+            { hashName: '★ Sport Gloves | Amphibious (Well-Worn)', staticWeight: 0.09 },
+            { hashName: '★ Hydra Gloves | Case Hardened (Well-Worn)', staticWeight: 0.07 },
+            { hashName: '★ Bloodhound Gloves | Charred (Well-Worn)', staticWeight: 0.05 },
+            { hashName: '★ Specialist Gloves | Lt. Commander (Well-Worn)', staticWeight: 0.03 },
+        ],
+    },
+    'cs500-index': {
+        id: 'cs500-index',
+        name: 'CS500 Index',
+        constituents: [
+            { hashName: 'AWP | Asiimov (Field-Tested)', staticWeight: 0.10 },
+            { hashName: 'AK-47 | Redline (Field-Tested)', staticWeight: 0.10 },
+            { hashName: '★ Karambit | Fade (Factory New)', staticWeight: 0.12 },
+            { hashName: "★ Sport Gloves | Pandora's Box (Field-Tested)", staticWeight: 0.10 },
+            { hashName: 'M4A4 | Howl (Field-Tested)', staticWeight: 0.10 },
+            { hashName: 'AWP | Dragon Lore (Field-Tested)', staticWeight: 0.08 },
+            { hashName: 'AK-47 | Fire Serpent (Field-Tested)', staticWeight: 0.08 },
+            { hashName: 'Glock-18 | Fade (Factory New)', staticWeight: 0.08 },
+            { hashName: 'M4A1-S | Knight (Factory New)', staticWeight: 0.08 },
+            { hashName: 'Desert Eagle | Blaze (Factory New)', staticWeight: 0.08 },
+            { hashName: 'AWP | Medusa (Field-Tested)', staticWeight: 0.04 },
+            { hashName: 'AK-47 | Wild Lotus (Well-Worn)', staticWeight: 0.04 },
+        ],
+    },
+};
+exports.INDEX_IDS = Object.keys(exports.INDEX_DEFINITIONS);

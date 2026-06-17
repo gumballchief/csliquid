@@ -101,13 +101,6 @@ async function fetchBulkPrices(): Promise<BulkIndexPrices> {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Cheap seeded change so the UI never shows 0% on first load. */
-function seededChange(skinId: string, price: number) {
-  let h = 5381;
-  for (const c of skinId) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
-  const pct = (((h >>> 0) % 600) - 300) / 10_000; // −3 % … +3 %
-  return { change24h: price * pct, changePct24h: pct * 100 };
-}
 
 function buildHistories(price: number): PriceHistories {
   return Object.fromEntries(
@@ -138,7 +131,7 @@ function deriveChange(
   price:  number,
   snaps:  Snapshot[],
 ): { change24h: number; changePct24h: number } {
-  if (snaps.length < 2) return seededChange(skinId, price);
+  if (snaps.length < 2) return { change24h: 0, changePct24h: 0 };
 
   // Find snapshot nearest to 24 h ago (within a ±30 min window)
   const target  = Date.now() - 86_400_000;
@@ -162,17 +155,16 @@ function mockFallback(skinId: string): SkinPriceData {
   const p     = Math.max(prev * (1 + drift), 0.01);
   mockPrices.set(skinId, p);
 
-  const { change24h, changePct24h } = seededChange(skinId, p);
   return {
     skinId,
     markPrice:    p,
     indexPrice:   p * 0.9998,
-    change24h,
-    changePct24h,
+    change24h:    0,
+    changePct24h: 0,
     high24h:      p * 1.004,
     low24h:       p * 0.997,
-    volume24h:    (m?.volume24h ?? 0),
-    fundingRate:  m?.fundingRate ?? 0,
+    volume24h:    0,
+    fundingRate:  0,
     histories:    getHistories(skinId, p),
     source:       'mock',
     fetchedAt:    Date.now(),
