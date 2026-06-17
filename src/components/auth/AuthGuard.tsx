@@ -66,13 +66,17 @@ function WalletGate() {
 export default function AuthGuard({ children }: { children: ReactNode }) {
   const { isAuthenticated, hydrated } = useAuth();
   const pathname = usePathname();
-  // Wait one tick after mount so auth hydration and wallet adapter auto-connect
-  // both finish before we decide to show the gate.
   const [adapterReady, setAdapterReady] = useState(false);
   useEffect(() => { setAdapterReady(true); }, []);
 
   if (!isProtected(pathname)) return <>{children}</>;
   if (!hydrated || !adapterReady) return null;
-  if (isAuthenticated) return <>{children}</>;
+
+  // Direct fallback: if a session keypair exists in localStorage the user has
+  // an active wallet regardless of AuthContext state (guards against race conditions).
+  const hasSessionWallet =
+    typeof localStorage !== 'undefined' && !!localStorage.getItem('guest_keypair');
+
+  if (isAuthenticated || hasSessionWallet) return <>{children}</>;
   return <WalletGate />;
 }
