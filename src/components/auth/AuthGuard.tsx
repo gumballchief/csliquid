@@ -72,10 +72,12 @@ export default function AuthGuard({ children }: { children: ReactNode }) {
   if (!isProtected(pathname)) return <>{children}</>;
   if (!hydrated || !adapterReady) return null;
 
-  // Direct fallback: if a session keypair exists in localStorage the user has
-  // an active wallet regardless of AuthContext state (guards against race conditions).
-  const hasSessionWallet =
-    typeof localStorage !== 'undefined' && !!localStorage.getItem('guest_keypair');
+  // Fallback: scan for any cs-futures-wallet-* key — AuthContext writes this for
+  // every session wallet, so its presence means the user has an active keypair
+  // even if AuthContext hasn't hydrated the user state yet.
+  const hasSessionWallet = Object.keys(localStorage).some(
+    k => k.startsWith('cs-futures-wallet-'),
+  );
 
   if (isAuthenticated || hasSessionWallet) return <>{children}</>;
   return <WalletGate />;
