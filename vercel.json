@@ -1,5 +1,13 @@
 {
-  "functions": {
-    "src/app/api/airdrop/route.ts": { "maxDuration": 60 }
+  "experimentalServices": {
+    "frontend": {
+      "routePrefix": "/",
+      "framework": "nextjs"
+    },
+    "oracle": {
+      "root": "services/oracle",
+      "entrypoint": "src/index.ts",
+      "routePrefix": "/_/oracle"
+    }
   }
 }

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import LivePriceHeader from '@/components/trade/LivePriceHeader';
 import TradePageClient from '@/components/trade/TradePageClient';
 import OpenPositionsTable from '@/components/trade/OpenPositionsTable';
@@ -46,6 +48,3 @@ export default function TradePage({ params }: Props) {
   );
 }
 
-export function generateStaticParams() {
-  return Object.keys(MARKETS).map(skin => ({ skin }));
-}
