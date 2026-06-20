@@ -26,7 +26,7 @@ export default function AirdropSyncer() {
   const signerAddress =
     connected && publicKey
       ? publicKey.toBase58()
-      : user?.type === 'generated' ? user.address : null;
+      : (user?.type === 'generated' || user?.type === 'email') ? user.address : null;
 
   useEffect(() => {
     if (!hydrated || !signerAddress) return;
@@ -82,7 +82,7 @@ export default function AirdropSyncer() {
         // Session wallet: auto-deposit into vault so AVAIL shows $10,000 immediately.
         // The admin airdrop tx already seeded SOL alongside USDC, so the session
         // wallet has enough lamports for the deposit instruction's rent.
-        if (user?.type === 'generated') {
+        if (user?.type === 'generated' || user?.type === 'email') {
           const kpRaw =
             typeof localStorage !== 'undefined' ? localStorage.getItem('guest_keypair') : null;
 

@@ -82,10 +82,11 @@ export default function WalletButton() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Don't overwrite an existing session wallet when Phantom auto-connects.
-    // Also check localStorage directly so we don't overwrite a session wallet
-    // that hasn't hydrated into React state yet (race condition on navigation).
-    if (connected && publicKey && user?.type !== 'generated') {
+    // Don't overwrite an existing session wallet (generated or email) when Phantom auto-connects.
+    // Also check localStorage directly to catch the race condition where the keypair exists
+    // but AuthContext hasn't hydrated the user state yet.
+    const hasSessionWallet = user?.type === 'generated' || user?.type === 'email';
+    if (connected && publicKey && !hasSessionWallet) {
       try {
         const hasGuestKeypair = !!localStorage.getItem('guest_keypair');
         if (!hasGuestKeypair) {
@@ -133,7 +134,7 @@ export default function WalletButton() {
   // Derive the active address once so both effects share it
   const activeAddress = connected && publicKey
     ? publicKey.toBase58()
-    : user?.type === 'generated' ? user.address : null;
+    : (user?.type === 'generated' || user?.type === 'email') ? user.address : null;
 
   useEffect(() => {
     if (!activeAddress) return;

@@ -13,10 +13,10 @@ import { Keypair } from '@solana/web3.js';
 import { encodeBase58, decodeBase58 } from '@/lib/base58';
 
 export type AuthUser =
-  | { type: 'email';     email: string   }
-  | { type: 'wallet';    address: string }
-  | { type: 'generated'; address: string }   // browser-generated keypair
-  | { type: 'guest' };                        // legacy / no-keypair guest
+  | { type: 'email';     email: string; address: string }  // email login, has session keypair
+  | { type: 'wallet';    address: string }                  // external wallet (Phantom etc)
+  | { type: 'generated'; address: string }                  // guest session keypair
+  | { type: 'guest' };                                      // legacy / no-keypair guest
 
 const STORAGE_KEY    = 'csliquid_auth';
 const KEYPAIR_KEY    = 'guest_keypair';        // legacy alias — kept so existing callsites work
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (parsed.type === 'generated') {
           const kp = loadKeypairForAddress(parsed.address);
           if (!kp) {
-            // Keypair was cleared — fall through to auto-generate below.
+            // Keypair was cleared — show auth screen.
             localStorage.removeItem(STORAGE_KEY);
           } else {
             ensureNewKeyFormat(kp);
@@ -99,15 +99,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
         } else if (parsed.type === 'email') {
-          // Migrate email records to a session keypair.
-          const kp = (keypairB58 ? tryLoadB58(keypairB58) : null) ?? Keypair.generate();
-          storeKeypairDual(kp);
-          const migrated: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
-          setUser(migrated);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          // Email user — restore keypair from the stored address.
+          const emailUser = parsed as { type: 'email'; email: string; address?: string };
+          const addr = emailUser.address;
+          const kp = (addr ? loadKeypairForAddress(addr) : null)
+            ?? (keypairB58 ? tryLoadB58(keypairB58) : null);
+          if (kp) {
+            storeKeypairDual(kp);
+            const restored: AuthUser = { type: 'email', email: emailUser.email, address: kp.publicKey.toBase58() };
+            setUser(restored);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+          } else {
+            // Keypair gone (cleared localStorage) — send back to auth screen.
+            localStorage.removeItem(STORAGE_KEY);
+          }
 
         } else if (parsed.type === 'wallet' && keypairB58) {
-          // Phantom auto-connect overwrote a session wallet auth — restore the session wallet.
+          // Phantom auto-connect overwrote a session wallet — restore the session wallet.
           const kp = tryLoadB58(keypairB58);
           if (kp) {
             storeKeypairDual(kp);
@@ -124,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
       } else {
-        // No auth record — scan for an existing session keypair first.
+        // No auth record — scan for a pre-existing session keypair (e.g. lost csliquid_auth key).
         const kp = scanForKeypair() ?? (keypairB58 ? tryLoadB58(keypairB58) : null);
 
         if (kp) {
@@ -132,14 +140,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const restored: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
           setUser(restored);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
-        } else {
-          // Brand new visitor — auto-generate a session wallet so they never see the auth gate.
-          const newKp = Keypair.generate();
-          storeKeypairDual(newKp);
-          const newUser: AuthUser = { type: 'generated', address: newKp.publicKey.toBase58() };
-          setUser(newUser);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
         }
+        // No keypair found and no stored user → user stays null, AuthScreen will show.
       }
     } catch {}
     setHydrated(true);
@@ -151,11 +153,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     else      localStorage.removeItem(STORAGE_KEY);
   }
 
-  const loginWithEmail = useCallback((_email: string) => {
+  const loginWithEmail = useCallback((email: string) => {
     const existing = localStorage.getItem(KEYPAIR_KEY);
     const kp = (existing ? tryLoadB58(existing) : null) ?? Keypair.generate();
     storeKeypairDual(kp);
-    persist({ type: 'generated', address: kp.publicKey.toBase58() });
+    persist({ type: 'email', email, address: kp.publicKey.toBase58() });
   }, []);
 
   const loginWithWallet = useCallback((address: string) => persist({ type: 'wallet', address }), []);
@@ -168,26 +170,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    // Remove canonical key and legacy key.
-    if (user?.type === 'generated') {
-      localStorage.removeItem(keypairKeyFor(user.address));
+    if (user?.type === 'generated' || user?.type === 'email') {
+      localStorage.removeItem(keypairKeyFor((user as { address: string }).address));
     }
     localStorage.removeItem(KEYPAIR_KEY);
     Object.keys(localStorage)
       .filter(k => k.startsWith(KEYPAIR_PREFIX))
       .forEach(k => localStorage.removeItem(k));
+    // Clear auth — user will see AuthScreen again. No auto-generation.
     persist(null);
-    // After logout, auto-generate a fresh session wallet.
-    const newKp = Keypair.generate();
-    storeKeypairDual(newKp);
-    const newUser: AuthUser = { type: 'generated', address: newKp.publicKey.toBase58() };
-    setUser(newUser);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
   }, [user]);
 
   const getKeypair = useCallback((): Keypair | null => {
-    if (!user || user.type !== 'generated') return null;
-    return loadKeypairForAddress(user.address);
+    if (!user) return null;
+    if (user.type === 'generated' || user.type === 'email') {
+      return loadKeypairForAddress((user as { address: string }).address);
+    }
+    return null;
   }, [user]);
 
   const ctxValue = useMemo(() => ({

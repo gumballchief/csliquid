@@ -32,7 +32,8 @@ export default function SignupPage() {
   const [confirm,  setConfirm]  = useState('');
   const [showPw,   setShowPw]   = useState(false);
   const [showCf,   setShowCf]   = useState(false);
-  const [errors,   setErrors]   = useState<{ email?: string; password?: string; confirm?: string }>({});
+  const [errors,   setErrors]   = useState<{ email?: string; password?: string; confirm?: string; form?: string }>({});
+  const [loading,  setLoading]  = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) router.replace('/trade');
@@ -49,11 +50,26 @@ export default function SignupPage() {
     return e;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs = validate();
     setErrors(errs);
-    if (Object.keys(errs).length === 0) loginWithEmail(email);
+    if (Object.keys(errs).length > 0) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setErrors({ form: data.error ?? 'Sign up failed.' }); return; }
+      loginWithEmail(email.trim().toLowerCase());
+    } catch {
+      setErrors({ form: 'Network error — try again.' });
+    } finally {
+      setLoading(false);
+    }
   }
 
   const inputBase = 'w-full bg-tx-bg border rounded-sm px-3 py-2.5 text-[12px] font-mono text-tx-text placeholder-tx-dim focus:outline-none transition-colors';
@@ -123,9 +139,11 @@ export default function SignupPage() {
             {errors.confirm && <p className="mt-1 text-[11px] font-mono text-tx-red">{errors.confirm}</p>}
           </div>
 
-          <button type="submit"
-            className="w-full py-3 bg-tx-green text-tx-bg font-mono font-bold text-[12px] uppercase tracking-[0.1em] hover:bg-[#00e87a] active:scale-[0.99] transition-all mt-1">
-            CREATE ACCOUNT
+          {errors.form && <p className="text-[11px] font-mono text-tx-red">{errors.form}</p>}
+
+          <button type="submit" disabled={loading}
+            className="w-full py-3 bg-tx-green text-tx-bg font-mono font-bold text-[12px] uppercase tracking-[0.1em] hover:bg-[#00e87a] active:scale-[0.99] transition-all mt-1 disabled:opacity-60">
+            {loading ? '…' : 'CREATE ACCOUNT'}
           </button>
         </form>
 

@@ -15,16 +15,31 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPw,   setShowPw]   = useState(false);
   const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) router.replace('/trade');
   }, [isAuthenticated, router]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !password) { setError('Please fill in all fields.'); return; }
     setError('');
-    loginWithEmail(email);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { setError(data.error ?? 'Login failed.'); return; }
+      loginWithEmail(email.trim().toLowerCase());
+    } catch {
+      setError('Network error — try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -84,9 +99,9 @@ export default function LoginPage() {
 
           {error && <p className="text-[11px] font-mono text-tx-red">{error}</p>}
 
-          <button type="submit"
-            className="w-full py-3 bg-tx-green text-tx-bg font-mono font-bold text-[12px] uppercase tracking-[0.1em] hover:bg-[#00e87a] active:scale-[0.99] transition-all mt-1">
-            LOG IN
+          <button type="submit" disabled={loading}
+            className="w-full py-3 bg-tx-green text-tx-bg font-mono font-bold text-[12px] uppercase tracking-[0.1em] hover:bg-[#00e87a] active:scale-[0.99] transition-all mt-1 disabled:opacity-60">
+            {loading ? '…' : 'LOG IN'}
           </button>
         </form>
 
