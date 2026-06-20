@@ -10,6 +10,7 @@ interface TraderStats {
   trades:       number;
   volume:       number;
   winRate:      number;
+  username?:    string | null;
 }
 
 function RankCell({ rank }: { rank: number }) {
@@ -117,7 +118,9 @@ export default function LeaderboardPage() {
                       <RankCell rank={i + 1} />
                     </td>
                     <td className="px-3 py-3">
-                      <span className="font-mono text-[11px] text-tx-text tabular-nums">{truncate(t.wallet)}</span>
+                      <span className="font-mono text-[11px] text-tx-text tabular-nums">
+                        {t.username ? `@${t.username}` : truncate(t.wallet)}
+                      </span>
                     </td>
                     <td className="px-3 py-3 text-right">
                       <span className={`font-mono text-[11px] font-bold tabular-nums ${pnlPos ? 'text-tx-green' : 'text-tx-red'}`}>

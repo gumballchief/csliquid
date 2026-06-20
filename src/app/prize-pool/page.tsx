@@ -18,6 +18,7 @@ interface LeaderboardEntry {
   winRate:   number;
   trades:    number;
   volume:    number;
+  username?: string | null;
 }
 
 function fmtVol(n: number) {
@@ -265,7 +266,9 @@ export default function PrizePoolPage() {
               return (
                 <div key={entry.wallet} className={`grid grid-cols-[36px_1fr_80px_72px] md:grid-cols-[44px_1fr_100px_68px_56px_88px] gap-x-2 px-4 py-2.5 border-b border-tx-border/50 last:border-0 hover:bg-tx-raised transition-colors ${rank === 1 ? 'bg-yellow-500/5' : ''}`}>
                   <span className="flex items-center"><RankBadge rank={rank} /></span>
-                  <span className="flex items-center font-mono text-[11px] text-tx-muted">{shortWallet(entry.wallet)}</span>
+                  <span className="flex items-center font-mono text-[11px] text-tx-muted">
+                    {entry.username ? `@${entry.username}` : shortWallet(entry.wallet)}
+                  </span>
                   <span className="flex items-center font-mono text-[11px] font-bold text-tx-text tabular-nums">{fmtVol(entry.volume)}</span>
                   <span className={`flex items-center font-mono text-[11px] tabular-nums md:hidden ${pnlPos ? 'text-tx-green' : 'text-tx-red'}`}>{pnlPos ? '+' : ''}{fmtVol(entry.totalPnl)}</span>
                   <span className="hidden md:flex items-center font-mono text-[11px] text-tx-muted tabular-nums">{entry.winRate.toFixed(0)}%</span>

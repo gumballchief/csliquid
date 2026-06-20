@@ -1,45 +1,47 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { AnchorProvider, BN, Idl, Program } from '@coral-xyz/anchor';
 import { Connection } from '@solana/web3.js';
-import rawIdl from '@/lib/idl/cs_skin_futures.json';
-import { COMMITMENT, RPC_URL } from '@/lib/config';
-
-const LAMPORTS = 1_000_000;
+import { sql } from '@vercel/postgres';
+import { COMMITMENT, PROGRAM_ID, RPC_URL } from '@/lib/config';
 
 const connection = new Connection(RPC_URL, COMMITMENT);
-const dummyWallet = {
-  publicKey: null as never,
-  signTransaction: async (tx: unknown) => tx,
-  signAllTransactions: async (txs: unknown[]) => txs,
-};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const provider = new AnchorProvider(connection, dummyWallet as any, { commitment: COMMITMENT });
-const program  = new Program(rawIdl as unknown as Idl, provider);
+
+// sha256("global:position")[0:8] = [170, 188, 143, 228, 122, 64, 247, 208]
+// base58 of those 8 bytes:
+const POSITION_DISCRIMINATOR_B58 = 'VZMoMoKgZQb';
+
+// size field is at byte offset 81 in the account data (8-byte u64 LE)
+const SIZE_OFFSET = 81;
 
 export async function GET(): Promise<NextResponse> {
+  let activePositions = 0;
+  let uniqueTraders = 0;
+
+  // On-chain: count positions where size > 0
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const positions: Array<{ account: any }> = await (program.account as any).position.all();
-
-    let activePositions = 0;
-    const uniqueOwners = new Set<string>();
-
-    for (const { account: pos } of positions) {
-      const size = Number((pos.size as BN).toString()) / LAMPORTS;
-      if (size > 0) {
-        activePositions++;
-        uniqueOwners.add(pos.owner.toString());
-      }
-    }
-
-    return NextResponse.json({
-      activePositions,
-      uniqueTraders: uniqueOwners.size,
+    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
+      commitment: COMMITMENT,
+      filters: [{ memcmp: { offset: 0, bytes: POSITION_DISCRIMINATOR_B58 } }],
+      dataSlice: { offset: SIZE_OFFSET, length: 8 },
     });
+
+    for (const { account } of accounts) {
+      const lo = account.data.readUInt32LE(0);
+      const hi = account.data.readUInt32LE(4);
+      if (lo > 0 || hi > 0) activePositions++;
+    }
   } catch (err) {
-    console.error('[stats/overview]', err);
-    return NextResponse.json({ activePositions: 0, uniqueTraders: 0 });
+    console.error('[stats/overview] on-chain error:', err);
   }
+
+  // Postgres: unique wallets across all position records
+  try {
+    const result = await sql`SELECT COUNT(DISTINCT wallet)::int AS count FROM positions`;
+    uniqueTraders = Number(result.rows[0]?.count ?? 0);
+  } catch {
+    // Postgres not configured — leave as 0
+  }
+
+  return NextResponse.json({ activePositions, uniqueTraders });
 }
