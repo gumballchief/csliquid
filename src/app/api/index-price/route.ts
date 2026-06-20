@@ -1,11 +1,13 @@
 /**
  * GET /api/index-price?id={indexId}
  *
- * Fetches live prices for all constituents of the requested index from
- * Steam Community Market in parallel (5 s timeout each), then returns the
- * volume-weighted average price (VWAP).
+ * Returns the live index price as the simple average of each constituent
+ * skin's midpoint price: (lowest_listing_price + median_sale_price) / 2.
  *
- * Falls back to last good cached value when all fetches fail.
+ * CS500 is computed from every constituent across all four base indices
+ * (AWP + AK-47 + Knife + Glove = 40 skins total).
+ *
+ * Falls back to last cached value when fetches fail.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,12 +16,14 @@ import { INDEX_DEFINITIONS } from '@/lib/indexes';
 const FETCH_TIMEOUT_MS = 5_000;
 const CACHE_TTL        = 30_000;
 
+const BASE_IDS = ['awp-index', 'ak47-index', 'knife-index', 'glove-index'] as const;
+
 // ── Module-level cache ─────────────────────────────────────────────────────
 
 interface CachedIndex { price: number; volume: number; ts: number }
 const indexCache = new Map<string, CachedIndex>();
 
-// ── helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function parseUSD(s: string | null | undefined): number {
   if (!s) return 0;
@@ -31,7 +35,7 @@ function parseVolume(s: string | null | undefined): number {
   return parseInt(String(s).replace(/,/g, ''), 10) || 0;
 }
 
-// ── Steam price fetch with timeout ─────────────────────────────────────────
+// ── Steam price fetch ──────────────────────────────────────────────────────
 
 interface SteamPriceOverview {
   success:       boolean;
@@ -41,13 +45,14 @@ interface SteamPriceOverview {
 }
 
 interface ConstituentPrice {
-  hashName:     string;
-  price:        number;
-  volume:       number;
-  staticWeight: number;
+  hashName: string;
+  lowest:   number;
+  median:   number;
+  midpoint: number; // (lowest + median) / 2
+  volume:   number;
 }
 
-async function fetchConstituent(hashName: string, staticWeight: number): Promise<ConstituentPrice> {
+async function fetchConstituent(hashName: string): Promise<ConstituentPrice> {
   const ac    = new AbortController();
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
 
@@ -74,10 +79,15 @@ async function fetchConstituent(hashName: string, staticWeight: number): Promise
     const body = (await res.json()) as SteamPriceOverview;
     if (!body.success)      throw new Error(`steam_failed: ${hashName}`);
 
-    const price = parseUSD(body.lowest_price) || parseUSD(body.median_price);
-    if (!price) throw new Error(`zero_price: ${hashName}`);
+    const lowest = parseUSD(body.lowest_price);
+    const median = parseUSD(body.median_price);
 
-    return { hashName, price, volume: parseVolume(body.volume), staticWeight };
+    if (lowest === 0 && median === 0) throw new Error(`zero_price: ${hashName}`);
+
+    const lo = lowest || median;
+    const hi = median || lowest;
+
+    return { hashName, lowest: lo, median: hi, midpoint: (lo + hi) / 2, volume: parseVolume(body.volume) };
 
   } catch (err) {
     clearTimeout(timer);
@@ -86,20 +96,12 @@ async function fetchConstituent(hashName: string, staticWeight: number): Promise
   }
 }
 
-// ── VWAP computation ───────────────────────────────────────────────────────
+// ── Index computation ──────────────────────────────────────────────────────
 
-function computeVwap(constituents: ConstituentPrice[]): { price: number; volume: number } {
-  const totalVolume = constituents.reduce((s, c) => s + c.volume, 0);
-
-  let price: number;
-  if (totalVolume > 0) {
-    price = constituents.reduce((s, c) => s + c.price * c.volume, 0) / totalVolume;
-  } else {
-    const totalWeight = constituents.reduce((s, c) => s + c.staticWeight, 0);
-    price = constituents.reduce((s, c) => s + c.price * (c.staticWeight / totalWeight), 0);
-  }
-
-  const volume = constituents.reduce((s, c) => s + c.price * c.volume, 0);
+function computeIndex(constituents: ConstituentPrice[]): { price: number; volume: number } {
+  const midpoints = constituents.map(c => c.midpoint);
+  const price  = midpoints.reduce((s, p) => s + p, 0) / midpoints.length;
+  const volume = constituents.reduce((s, c) => s + c.lowest * c.volume, 0);
   return { price, volume };
 }
 
@@ -107,11 +109,17 @@ function computeVwap(constituents: ConstituentPrice[]): { price: number; volume:
 
 export async function GET(req: NextRequest) {
   const indexId = req.nextUrl.searchParams.get('id') ?? '';
-  const def     = INDEX_DEFINITIONS[indexId];
 
-  if (!def) {
+  // CS500: all constituents from all 4 base indices
+  const constituentHashNames = indexId === 'cs500-index'
+    ? Array.from(new Set(BASE_IDS.flatMap(id => INDEX_DEFINITIONS[id].constituents.map(c => c.hashName))))
+    : INDEX_DEFINITIONS[indexId]?.constituents.map(c => c.hashName) ?? null;
+
+  if (!constituentHashNames) {
     return NextResponse.json({ error: `Unknown index ID: ${indexId}` }, { status: 400 });
   }
+
+  const def = INDEX_DEFINITIONS[indexId] ?? INDEX_DEFINITIONS['awp-index'];
 
   // Serve fresh server-side cache if available
   const hit = indexCache.get(indexId);
@@ -119,13 +127,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       indexId, name: def.name,
       price: hit.price, volume: hit.volume,
-      source: 'steam_vwap_cached', fetchedAt: hit.ts,
+      source: 'steam_midpoint_cached', fetchedAt: hit.ts,
     });
   }
 
-  const settled = await Promise.allSettled(
-    def.constituents.map(c => fetchConstituent(c.hashName, c.staticWeight)),
-  );
+  const settled = await Promise.allSettled(constituentHashNames.map(fetchConstituent));
 
   const successful = settled
     .filter((r): r is PromiseFulfilledResult<ConstituentPrice> => r.status === 'fulfilled')
@@ -136,27 +142,21 @@ export async function GET(req: NextRequest) {
     .map(r => (r as PromiseRejectedResult).reason as string);
 
   if (failures.length > 0) {
-    console.error(`[index-price] ${indexId}: ${failures.length}/${def.constituents.length} constituents failed:`, failures);
+    console.error(`[index-price] ${indexId}: ${failures.length}/${constituentHashNames.length} failed:`, failures);
   }
 
   if (successful.length === 0) {
-    // All failed — return stale cache rather than 503
     if (hit) {
-      console.warn(`[index-price] ${indexId}: all fetches failed, returning stale cache`);
       return NextResponse.json({
         indexId, name: def.name,
         price: hit.price, volume: hit.volume,
-        source: 'steam_vwap_stale', fetchedAt: hit.ts, stale: true,
+        source: 'steam_midpoint_stale', fetchedAt: hit.ts, stale: true,
       });
     }
-    return NextResponse.json(
-      { error: 'All constituent fetches failed', failures },
-      { status: 503 },
-    );
+    return NextResponse.json({ error: 'All constituent fetches failed', failures }, { status: 503 });
   }
 
-  const { price, volume } = computeVwap(successful);
-
+  const { price, volume } = computeIndex(successful);
   indexCache.set(indexId, { price, volume, ts: Date.now() });
 
   return NextResponse.json({
@@ -165,9 +165,9 @@ export async function GET(req: NextRequest) {
     price,
     volume,
     constituentsUsed:  successful.length,
-    totalConstituents: def.constituents.length,
+    totalConstituents: constituentHashNames.length,
     failures:          failures.length > 0 ? failures : undefined,
-    source:            'steam_vwap',
+    source:            'steam_midpoint',
     fetchedAt:         Date.now(),
   });
 }

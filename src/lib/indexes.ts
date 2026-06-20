@@ -106,15 +106,10 @@ export const INDEX_DEFINITIONS: Record<string, SkinIndexDefinition> = {
     id:          'cs500-index',
     name:        'CS500 Index',
     weapon:      'CS500',
-    description: 'Volume-weighted average of the top 500 best-selling CS2 skins across CSFloat and Skinport',
-    constituents: [
-      { hashName: 'AWP | Dragon Lore (Factory New)',            staticWeight: 0.050 },
-      { hashName: '★ Karambit | Fade (Factory New)',            staticWeight: 0.040 },
-      { hashName: '★ M9 Bayonet | Doppler (Factory New)',       staticWeight: 0.035 },
-      { hashName: 'AK-47 | Wild Lotus (Factory New)',           staticWeight: 0.030 },
-      { hashName: 'M4A4 | Howl (Field-Tested)',                 staticWeight: 0.025 },
-      // remaining 495 constituents computed server-side from rolling 30d volume
-    ],
+    description: 'Simple average of the midpoint price of every constituent skin across all four base indices (AWP + AK-47 + Knife + Glove, 40 skins total)',
+    constituents: [],
+    // Constituents are derived at runtime from all four base indices —
+    // see /api/prices and /api/index-price for the actual implementation.
   },
 };
 

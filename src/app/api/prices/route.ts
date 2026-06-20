@@ -1,80 +1,42 @@
 import { NextResponse } from 'next/server';
 import { kv } from '@vercel/kv';
+import { INDEX_DEFINITIONS } from '@/lib/indexes';
 import {
   BulkIndexPrices,
   getPriceCache,
   setPriceCache,
 } from '@/lib/priceCache';
 
-const SNAPSHOT_TTL_SEC = 90_000; // 25 hours — long enough to survive overnight gaps
-
-async function store24hSnapshot(prices: Record<string, number>): Promise<void> {
-  try {
-    await Promise.all(
-      Object.entries(prices).map(([key, price]) =>
-        price > 0
-          ? kv.set(`price_24h:${key}`, price, { ex: SNAPSHOT_TTL_SEC, nx: true })
-          : Promise.resolve(),
-      ),
-    );
-  } catch { /* KV unavailable — silently skip */ }
-}
-
-// Re-export so skinPriceService can import the type from here
 export type { BulkIndexPrices };
 
-export const dynamic    = 'force-dynamic';
-export const maxDuration = 10; // Vercel cap: abort if Steam is totally unresponsive
+export const dynamic     = 'force-dynamic';
+export const maxDuration = 10;
 
+const SNAPSHOT_TTL_SEC = 90_000;
 const FETCH_TIMEOUT_MS = 5_000;
 const CACHE_TTL        = 30_000;
 
-// ── Constituents ──────────────────────────────────────────────────────────────
+// ── Constituent skin lists derived from INDEX_DEFINITIONS ─────────────────────
+
+const BASE_IDS = ['awp-index', 'ak47-index', 'knife-index', 'glove-index'] as const;
 
 const INDEX_SKINS: Record<string, string[]> = {
-  'awp-index': [
-    'AWP | Asiimov (Field-Tested)',
-    'AWP | Redline (Field-Tested)',
-    'AWP | Hyper Beast (Field-Tested)',
-    'AWP | Dragon Lore (Field-Tested)',
-    'AWP | Medusa (Minimal Wear)',
-  ],
-  'ak47-index': [
-    'AK-47 | Redline (Field-Tested)',
-    'AK-47 | Asiimov (Field-Tested)',
-    'AK-47 | Vulcan (Minimal Wear)',
-    'AK-47 | Fire Serpent (Field-Tested)',
-    'AK-47 | Wild Lotus (Minimal Wear)',
-  ],
-  'knife-index': [
-    '★ Karambit | Fade (Factory New)',
-    '★ M9 Bayonet | Doppler (Factory New)',
-    '★ Butterfly Knife | Fade (Factory New)',
-    '★ Karambit | Doppler (Factory New)',
-    '★ Bayonet | Tiger Tooth (Factory New)',
-  ],
-  'glove-index': [
-    "★ Sport Gloves | Pandora's Box (Field-Tested)",
-    '★ Specialist Gloves | Crimson Kimono (Field-Tested)',
-    '★ Hand Wraps | Cobalt Skulls (Field-Tested)',
-    '★ Moto Gloves | Spearmint (Field-Tested)',
-    '★ Driver Gloves | Crimson Weave (Field-Tested)',
-  ],
-  'cs500-index': [
-    'AWP | Dragon Lore (Factory New)',
-    '★ Karambit | Fade (Factory New)',
-    '★ M9 Bayonet | Doppler (Factory New)',
-    'AK-47 | Wild Lotus (Factory New)',
-    'M4A4 | Howl (Field-Tested)',
-  ],
+  'awp-index':   INDEX_DEFINITIONS['awp-index'].constituents.map(c => c.hashName),
+  'ak47-index':  INDEX_DEFINITIONS['ak47-index'].constituents.map(c => c.hashName),
+  'knife-index': INDEX_DEFINITIONS['knife-index'].constituents.map(c => c.hashName),
+  'glove-index': INDEX_DEFINITIONS['glove-index'].constituents.map(c => c.hashName),
 };
+
+// CS500 = every skin from all 4 base indices (40 total, deduped)
+const CS500_SKINS = Array.from(new Set(BASE_IDS.flatMap(id => INDEX_SKINS[id])));
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface SkinResult {
   hashName: string;
-  price:    number | null;
-  field:    'lowest_price' | 'median_price' | null;
+  lowest:   number;
+  median:   number;
+  midpoint: number; // (lowest + median) / 2
   source:   'steam' | 'failed';
   error?:   string;
 }
@@ -92,15 +54,14 @@ function parseUSD(s: string | null | undefined): number {
   return parseFloat(s.replace(/[^\d.]/g, '')) || 0;
 }
 
-function fail(hashName: string, error: string): SkinResult {
-  return { hashName, price: null, field: null, source: 'failed', error };
-}
-
-// ── Steam fetch with 5 s timeout ──────────────────────────────────────────────
+// ── Steam fetch ───────────────────────────────────────────────────────────────
 
 async function fetchSteamPrice(hashName: string): Promise<SkinResult> {
   const ac    = new AbortController();
   const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+
+  const fail = (error: string): SkinResult =>
+    ({ hashName, lowest: 0, median: 0, midpoint: 0, source: 'failed', error });
 
   try {
     const url =
@@ -119,64 +80,81 @@ async function fetchSteamPrice(hashName: string): Promise<SkinResult> {
     });
     clearTimeout(timer);
 
-    if (res.status === 429) return fail(hashName, 'steam_rate_limited');
-    if (!res.ok)            return fail(hashName, `steam_http_${res.status}`);
+    if (res.status === 429) return fail('steam_rate_limited');
+    if (!res.ok)            return fail(`steam_http_${res.status}`);
 
     const body = (await res.json()) as SteamPriceOverview;
-    if (!body.success) return fail(hashName, 'steam_success_false');
+    if (!body.success)      return fail('steam_success_false');
 
     const lowest = parseUSD(body.lowest_price);
     const median = parseUSD(body.median_price);
 
-    if (lowest > 0) return { hashName, price: lowest, field: 'lowest_price', source: 'steam' };
-    if (median > 0) return { hashName, price: median, field: 'median_price', source: 'steam' };
-    return fail(hashName, 'steam_price_zero');
+    if (lowest === 0 && median === 0) return fail('steam_price_zero');
+
+    // Midpoint between floor listing price and median sale price.
+    // If only one is available, use it directly (midpoint = that value).
+    const lo = lowest || median;
+    const hi = median || lowest;
+    const midpoint = (lo + hi) / 2;
+
+    return { hashName, lowest: lo, median: hi, midpoint, source: 'steam' };
 
   } catch (err) {
     clearTimeout(timer);
     const msg = (err as Error).name === 'AbortError' ? 'steam_timeout_5s' : (err as Error).message;
-    return fail(hashName, msg);
+    return fail(msg);
   }
 }
 
-// ── Index computation ─────────────────────────────────────────────────────────
+// ── Price computation ─────────────────────────────────────────────────────────
 
-async function computeIndex(indexId: string): Promise<{ price: number; results: SkinResult[] }> {
-  const skins   = INDEX_SKINS[indexId] ?? [];
-  const results = await Promise.all(skins.map(fetchSteamPrice));
-  const prices  = results.filter(r => r.price !== null && r.price > 0).map(r => r.price as number);
-  const price   = prices.length === 0 ? 0 : prices.reduce((a, b) => a + b, 0) / prices.length;
-  return { price, results };
+function avgMidpoint(results: SkinResult[]): number {
+  const pts = results.filter(r => r.midpoint > 0).map(r => r.midpoint);
+  if (pts.length === 0) return 0;
+  return pts.reduce((a, b) => a + b, 0) / pts.length;
 }
 
-// ── Console audit ─────────────────────────────────────────────────────────────
+// ── Audit log ─────────────────────────────────────────────────────────────────
 
-const PAD = 44;
+const PAD = 46;
 
-function printAudit(indexId: string, results: SkinResult[], finalPrice: number, fromCache: boolean) {
-  const tag = `[PRICES/${indexId.replace('-index', '').toUpperCase()}]`;
-  console.log(`${tag} ────────────────────────────────────────────────`);
+function printAudit(label: string, results: SkinResult[], finalPrice: number, stale: boolean) {
+  const tag = `[PRICES/${label}]`;
+  console.log(`${tag} ────────────────────────────────────────────`);
   for (const r of results) {
     const name = r.hashName.length > PAD ? r.hashName.slice(0, PAD - 1) + '…' : r.hashName.padEnd(PAD);
-    if (r.price !== null) {
-      console.log(`${tag}   ✓  ${name}  $${r.price.toFixed(2).padStart(8)}  [Steam/${r.field === 'lowest_price' ? 'lowest' : 'median'}]`);
+    if (r.midpoint > 0) {
+      console.log(`${tag}   ✓  ${name}  lo=$${r.lowest.toFixed(2).padStart(8)}  mid=$${r.median.toFixed(2).padStart(8)}  →$${r.midpoint.toFixed(2).padStart(8)}`);
     } else {
       console.log(`${tag}   ✗  ${name}  FAILED  [${r.error}]`);
     }
   }
-  const fetched = results.filter(r => r.price !== null).length;
+  const ok = results.filter(r => r.midpoint > 0).length;
   if (finalPrice > 0) {
-    console.log(`${tag}   → $${finalPrice.toFixed(2)}  (${fetched}/${results.length} skins)${fromCache ? '  ← stale cache' : ''}`);
+    console.log(`${tag}   → $${finalPrice.toFixed(2)}  avg-midpoint  (${ok}/${results.length} skins)${stale ? '  ← stale cache' : ''}`);
   } else {
     console.log(`${tag}   → UNAVAILABLE  (0/${results.length} skins, no cache)`);
   }
+}
+
+// ── 24h KV snapshot ───────────────────────────────────────────────────────────
+
+async function store24hSnapshot(prices: Record<string, number>): Promise<void> {
+  try {
+    await Promise.all(
+      Object.entries(prices).map(([key, price]) =>
+        price > 0
+          ? kv.set(`price_24h:${key}`, price, { ex: SNAPSHOT_TTL_SEC, nx: true })
+          : Promise.resolve(),
+      ),
+    );
+  } catch { /* KV unavailable — silently skip */ }
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 export async function GET() {
   const cached = getPriceCache();
-  // Return from shared cache if fresh — /api/price/[index] benefits from this too
   if (cached && Date.now() - cached.updatedAt < CACHE_TTL) {
     return NextResponse.json(cached);
   }
@@ -184,33 +162,45 @@ export async function GET() {
   try {
     console.log(`\n[PRICES] ══════════  AUDIT  ${new Date().toISOString()}  ══════════`);
 
-    const [awpR, ak47R, knifeR, gloveR, cs500R] = await Promise.all([
-      computeIndex('awp-index'),
-      computeIndex('ak47-index'),
-      computeIndex('knife-index'),
-      computeIndex('glove-index'),
-      computeIndex('cs500-index'),
-    ]);
+    // Fetch all 40 unique skins in a single parallel batch
+    const allResults = await Promise.all(CS500_SKINS.map(fetchSteamPrice));
+
+    // Build O(1) lookup map
+    const byHash = new Map<string, SkinResult>();
+    CS500_SKINS.forEach((h, i) => byHash.set(h, allResults[i]));
+
+    const pick = (skins: string[]): SkinResult[] =>
+      skins.map(h => byHash.get(h) ?? { hashName: h, lowest: 0, median: 0, midpoint: 0, source: 'failed' as const, error: 'not_fetched' });
+
+    const awpResults   = pick(INDEX_SKINS['awp-index']);
+    const ak47Results  = pick(INDEX_SKINS['ak47-index']);
+    const knifeResults = pick(INDEX_SKINS['knife-index']);
+    const gloveResults = pick(INDEX_SKINS['glove-index']);
+    const cs500Results = allResults; // all 40 skins
+
+    const awpFresh   = avgMidpoint(awpResults);
+    const ak47Fresh  = avgMidpoint(ak47Results);
+    const knifeFresh = avgMidpoint(knifeResults);
+    const gloveFresh = avgMidpoint(gloveResults);
+    const cs500Fresh = avgMidpoint(cs500Results);
 
     const prev = cached;
+    const awp   = awpFresh   > 0 ? awpFresh   : (prev?.awp   ?? 0);
+    const ak47  = ak47Fresh  > 0 ? ak47Fresh  : (prev?.ak47  ?? 0);
+    const knife = knifeFresh > 0 ? knifeFresh : (prev?.knife ?? 0);
+    const glove = gloveFresh > 0 ? gloveFresh : (prev?.glove ?? 0);
+    const cs500 = cs500Fresh > 0 ? cs500Fresh : (prev?.cs500 ?? 0);
 
-    const awp   = awpR.price   > 0 ? awpR.price   : (prev?.awp   ?? 0);
-    const ak47  = ak47R.price  > 0 ? ak47R.price  : (prev?.ak47  ?? 0);
-    const knife = knifeR.price > 0 ? knifeR.price : (prev?.knife ?? 0);
-    const glove = gloveR.price > 0 ? gloveR.price : (prev?.glove ?? 0);
-    const cs500 = cs500R.price > 0 ? cs500R.price : (prev?.cs500 ?? 0);
-
-    printAudit('awp-index',   awpR.results,   awp,   awpR.price   === 0 && !!prev?.awp);
-    printAudit('ak47-index',  ak47R.results,  ak47,  ak47R.price  === 0 && !!prev?.ak47);
-    printAudit('knife-index', knifeR.results, knife, knifeR.price === 0 && !!prev?.knife);
-    printAudit('glove-index', gloveR.results, glove, gloveR.price === 0 && !!prev?.glove);
-    printAudit('cs500-index', cs500R.results, cs500, cs500R.price === 0 && !!prev?.cs500);
-    console.log(`[PRICES] ════════════════════════════════════════════════════\n`);
+    printAudit('AWP',   awpResults,   awp,   awpFresh   === 0 && !!prev?.awp);
+    printAudit('AK47',  ak47Results,  ak47,  ak47Fresh  === 0 && !!prev?.ak47);
+    printAudit('KNIFE', knifeResults, knife, knifeFresh === 0 && !!prev?.knife);
+    printAudit('GLOVE', gloveResults, glove, gloveFresh === 0 && !!prev?.glove);
+    printAudit('CS500', cs500Results, cs500, cs500Fresh === 0 && !!prev?.cs500);
+    console.log(`[PRICES] ══════════════════════════════════════════════════\n`);
 
     const data: BulkIndexPrices = { awp, ak47, knife, glove, cs500, updatedAt: Date.now() };
     if (awp > 0 || ak47 > 0 || knife > 0 || glove > 0 || cs500 > 0) {
       setPriceCache(data);
-      // Store 24h snapshot — only write when we have a fresh fetch (not stale cache)
       void store24hSnapshot({
         'awp-index':   awp,
         'ak47-index':  ak47,
@@ -223,9 +213,9 @@ export async function GET() {
     return NextResponse.json(data);
 
   } catch (err) {
-    console.error('[PRICES] Unexpected error in GET handler:', (err as Error).message, err);
+    console.error('[PRICES] Unexpected error:', (err as Error).message, err);
     if (cached) {
-      console.warn('[PRICES] Returning stale cache after unexpected error');
+      console.warn('[PRICES] Returning stale cache after error');
       return NextResponse.json(cached);
     }
     const empty: BulkIndexPrices = { awp: 0, ak47: 0, knife: 0, glove: 0, cs500: 0, updatedAt: Date.now() };
