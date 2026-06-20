@@ -6,6 +6,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import rawIdl from '@/lib/idl/cs_skin_futures.json';
 import { COMMITMENT, PROGRAM_ID, RPC_URL } from '@/lib/config';
 import { initDb, db } from '@/lib/db';
+import { kv } from '@vercel/kv';
 
 const LAMPORTS = 1_000_000;
 
@@ -45,6 +46,24 @@ interface TraderStats {
   volume: number;
   wins: number;
   winRate: number;
+  username?: string | null;
+}
+
+async function resolveUsernames(wallets: string[]): Promise<Record<string, string>> {
+  if (!wallets.length || !process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) return {};
+  try {
+    const pipeline = kv.pipeline();
+    for (const w of wallets) pipeline.get<{ username?: string }>(`referrer:${w}`);
+    const results = await pipeline.exec<({ username?: string } | null)[]>();
+    const map: Record<string, string> = {};
+    for (let i = 0; i < wallets.length; i++) {
+      const d = results[i];
+      if (d?.username) map[wallets[i]] = d.username;
+    }
+    return map;
+  } catch {
+    return {};
+  }
 }
 
 // ── DB leaderboard (closed trades, realized PnL) ──────────────────────────────
@@ -129,14 +148,17 @@ async function getOnChainLeaderboard(): Promise<TraderStats[]> {
 
 export async function GET(): Promise<NextResponse> {
   try {
-    // Use DB when available (realized PnL + win rate from closed trades),
-    // fall back to on-chain open-position scan otherwise.
-    if (process.env.POSTGRES_URL) {
-      const results = await getDbLeaderboard();
-      return NextResponse.json(results);
-    }
-    const results = await getOnChainLeaderboard();
-    return NextResponse.json(results);
+    const results = process.env.POSTGRES_URL
+      ? await getDbLeaderboard()
+      : await getOnChainLeaderboard();
+
+    const usernameMap = await resolveUsernames(results.map(r => r.wallet));
+    const withUsernames = results.map(r => ({
+      ...r,
+      username: usernameMap[r.wallet] ?? null,
+    }));
+
+    return NextResponse.json(withUsernames);
   } catch (err) {
     console.error('[leaderboard]', err);
     return NextResponse.json([]);
