@@ -3,7 +3,10 @@ import { FuturesMarket } from '@/types';
 import Sparkline from './Sparkline';
 
 function fmt(n: number) {
-  if (n >= 1000) return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000)     return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 10_000)        return `${(n / 1_000).toFixed(1)}K`;
+  if (n >= 1_000)         return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return n.toFixed(2);
 }
 

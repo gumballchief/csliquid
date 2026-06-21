@@ -139,7 +139,15 @@ function deriveChange(
   const target  = Date.now() - 86_400_000;
   const window  = 1_800_000;
   const match   = snaps.find(s => Math.abs(s.timestamp - target) < window);
-  const base    = match ?? snaps[0]; // oldest available as proxy
+
+  // Only use oldest snapshot as proxy if it is at least 30 minutes old,
+  // to avoid showing wild % swings from a baseline that is only seconds old.
+  const MIN_AGE_MS = 30 * 60_000;
+  const oldest = snaps[0];
+  const oldestAgeMs = Date.now() - oldest.timestamp;
+  if (!match && oldestAgeMs < MIN_AGE_MS) return { change24h: 0, changePct24h: 0 };
+
+  const base    = match ?? oldest;
 
   const change24h    = price - base.price;
   const changePct24h = (change24h / base.price) * 100;

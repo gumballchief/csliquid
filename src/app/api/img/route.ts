@@ -5,6 +5,7 @@ const ALLOWED_HOSTS = new Set([
   'steamcommunity-a.akamaihd.net',
   'community.akamai.steamstatic.com',
   'community.cloudflare.steamstatic.com',
+  'cdn.cloudflare.steamstatic.com',
 ]);
 
 export async function GET(req: NextRequest) {

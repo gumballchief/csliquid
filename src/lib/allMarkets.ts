@@ -24,31 +24,31 @@ export const ALL_MARKETS: MarketDefinition[] = [
     slug: 'awp-index', ticker: 'AWP-IDX', name: 'AWP Index',
     shortName: 'AWP Index',
     type: 'index', steamHashName: null, approxPrice: 55, onChain: true,
-    iconUrl: 'https://steamcommunity-a.akamaihd.net/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot221FAR17PLfYQJD_9W1k5SBmf_8n6bLm2pu5Mx2gv2P9o6n3gWw-EIuMWGlJISQIFI-M1yC_gK7xO-x8WW7N4I/360fx360f',
+    iconUrl: 'https://cdn.cloudflare.steamstatic.com/apps/730/icons/econ/weapons/base_weapons/weapon_awp.png',
   },
   {
     slug: 'ak47-index', ticker: 'AK47-IDX', name: 'AK-47 Index',
     shortName: 'AK-47 Index',
     type: 'index', steamHashName: null, approxPrice: 12, onChain: true,
-    iconUrl: 'https://steamcommunity-a.akamaihd.net/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot3bS9hNpNKZY14HduIaExuPzKa0ku6f1pVKlvsEri7jTy0G3/360fx360f',
+    iconUrl: 'https://cdn.cloudflare.steamstatic.com/apps/730/icons/econ/weapons/base_weapons/weapon_ak47.png',
   },
   {
     slug: 'knife-index', ticker: 'KNIFE-IDX', name: 'Knife Index',
     shortName: 'Knife Index',
     type: 'index', steamHashName: null, approxPrice: 480, onChain: true,
-    iconUrl: 'https://steamcommunity-a.akamaihd.net/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot3VfeL9mNztR7euCkdKCnp7g0fiQh-f5nq/360fx360f',
+    iconUrl: 'https://cdn.cloudflare.steamstatic.com/apps/730/icons/econ/weapons/base_weapons/weapon_knife_butterfly.png',
   },
   {
     slug: 'glove-index', ticker: 'GLOVE-IDX', name: 'Glove Index',
     shortName: 'Glove Index',
     type: 'index', steamHashName: null, approxPrice: 280, onChain: true,
-    iconUrl: 'https://steamcommunity-a.akamaihd.net/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot3VfeL9mNztR7ejCkdKCnp7k0fiQh-f5nq/360fx360f',
+    iconUrl: 'https://cdn.cloudflare.steamstatic.com/apps/730/icons/econ/wearables/hand_wraps/leop_glove_lt.png',
   },
   {
     slug: 'cs500-index', ticker: 'CS500', name: 'CS500 Index',
     shortName: 'CS500 Index',
     type: 'index', steamHashName: null, approxPrice: 420, onChain: true,
-    iconUrl: 'https://steamcommunity-a.akamaihd.net/economy/image/-9a81dlWLwJ2UUGcVs_nsVtzdOEdtWwKGZZLQHTxDZ7I56KU0Zwwo4NUX4oFJZEHLbXH5ApeO4YmlhxYQknCRvCo04DEVlxkKgpot221FAR17PLfYQJD_9W1k5SBmf_wNq5aKYknDJi/360fx360f',
+    iconUrl: 'https://cdn.cloudflare.steamstatic.com/apps/730/icons/econ/weapons/base_weapons/weapon_awp.png',
   },
 
   // ── Individual skin perps ─────────────────────────────────────────────────

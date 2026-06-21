@@ -37,9 +37,11 @@ function useFundingCountdown() {
 }
 
 function fmt(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000)     return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (n >= 1)         return `$${n.toFixed(2)}`;
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 10_000)        return `$${(n / 1_000).toFixed(1)}K`;
+  if (n >= 1_000)         return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (n >= 1)             return `$${n.toFixed(2)}`;
   return `$${n.toFixed(4)}`;
 }
 
@@ -63,7 +65,7 @@ function MarketIcon({ market }: { market: MarketDefinition }) {
       <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0 border" style={{ borderColor: `${color}40` }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`/api/img?url=${encodeURIComponent(market.iconUrl)}`}
+          src={market.iconUrl}
           alt={market.shortName}
           width={40}
           height={40}
