@@ -11,6 +11,7 @@ import { sendClosePosition, sendClosePositionKeypair, extractErrorMessage } from
 import { decodeBase58 } from '@/lib/base58';
 import { isMarketConfigured } from '@/lib/markets';
 import { fetchSkinPrice } from '@/services/skinPriceService';
+import { useOnChainPrices } from '@/hooks/useOnChainPrices';
 
 const POLL_MS = 30_000;
 
@@ -34,6 +35,9 @@ export default function OpenPositionsTable() {
   const { user }      = useAuth();
   const program       = useProgram();
   const addToast      = useToastStore((s) => s.addToast);
+  const onChainPrices = useOnChainPrices();
+  const onChainPricesRef = useRef(onChainPrices);
+  onChainPricesRef.current = onChainPrices;
 
   // Poll mark prices for all open positions
   useEffect(() => {
@@ -48,6 +52,15 @@ export default function OpenPositionsTable() {
           prices[skinIds[i]] = r.value.markPrice;
         }
       });
+      // On-chain oracle prices are the authoritative source — prefer them over
+      // the Steam API feed so mark prices match the price the user sees at entry.
+      const ocp = onChainPricesRef.current;
+      for (const skinId of skinIds) {
+        const entry = ocp[skinId];
+        if (entry && entry.price > 0 && !entry.stale) {
+          prices[skinId] = entry.price;
+        }
+      }
       if (Object.keys(prices).length > 0) {
         updateMarkPricesRef.current(prices);
         liquidateUnderwaterRef.current(prices);

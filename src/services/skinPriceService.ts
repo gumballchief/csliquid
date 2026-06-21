@@ -73,7 +73,7 @@ const INDEX_BULK_KEY: Partial<Record<string, keyof Omit<BulkIndexPrices, 'update
   'cs500-index': 'cs500',
 };
 
-const BULK_STALE_MS = 25_000; // slightly under server's 30 s TTL
+const BULK_STALE_MS = 8_000;  // match STALE_MS — prevents stale prices from causing false liquidations
 let bulkCache: { data: BulkIndexPrices; ts: number } | null = null;
 /** In-flight promise so concurrent calls share one fetch. */
 let bulkFetchInFlight: Promise<BulkIndexPrices> | null = null;
