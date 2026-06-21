@@ -23,7 +23,7 @@ export default function PriceTicker() {
         <span className="flex items-center gap-2 px-3 sm:px-4 whitespace-nowrap">
           <span className="text-tx-dim font-mono text-[10px] tracking-[0.08em] uppercase">{item.label}</span>
           <span className="text-tx-text font-mono text-[10px] sm:text-[11px] tabular-nums">
-            {item.loading ? '—' : `$${item.price >= 1000 ? item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : item.price.toFixed(2)}`}
+            {item.loading ? '—' : `${item.price >= 1_000_000_000 ? '$' + (item.price/1_000_000_000).toFixed(2) + 'B' : item.price >= 1_000_000 ? '$' + (item.price/1_000_000).toFixed(2) + 'M' : item.price >= 10_000 ? '$' + (item.price/1_000).toFixed(1) + 'K' : item.price >= 1_000 ? '$' + item.price.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:2}) : '$' + item.price.toFixed(2)}`}
           </span>
           {!item.loading && (
             <span className={`font-mono text-[10px] tabular-nums ${item.pct >= 0 ? 'text-tx-green' : 'text-tx-red'}`}>

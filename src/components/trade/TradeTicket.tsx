@@ -106,7 +106,11 @@ const QUICK_LEVERAGES = [1, 2, 5, 10, 20] as const;
 const LEV_MARKS       = [1, 2, 5, 10, 20] as const;
 
 function fmtPrice(n: number) {
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000)     return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 10_000)        return `${(n / 1_000).toFixed(1)}K`;
+  if (n >= 1_000)         return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toFixed(2);
 }
 
 const inputCls = 'w-full bg-tx-bg border border-tx-border2 rounded-sm pl-5 pr-3 py-2 text-[12px] text-tx-text placeholder-tx-dim font-mono tabular-nums focus:outline-none focus:border-tx-muted transition-colors';

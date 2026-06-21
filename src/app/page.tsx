@@ -26,7 +26,10 @@ const MARKET_META = [
 // ── Formatters ─────────────────────────────────────────────────────────────────
 function fmtPrice(p: number) {
   if (!p || p <= 0) return '—';
-  if (p >= 1000) return '$' + p.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  if (p >= 1_000_000_000) return '$' + (p / 1_000_000_000).toFixed(2) + 'B';
+  if (p >= 1_000_000)     return '$' + (p / 1_000_000).toFixed(2) + 'M';
+  if (p >= 10_000)        return '$' + (p / 1_000).toFixed(1) + 'K';
+  if (p >= 1_000)         return '$' + p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return '$' + p.toFixed(2);
 }
 function fmtPct(pct: number, loading: boolean) {
