@@ -97,7 +97,8 @@ export async function POST(req: NextRequest) {
       `;
       eligible = Number(result.rows[0]?.cnt ?? 0) > 0;
     } catch {
-      eligible = true; // DB error — grant eligibility so roll isn't blocked
+      // DB error — deny rather than grant so users can't exploit outages
+      eligible = false;
     }
   }
 

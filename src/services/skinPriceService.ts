@@ -13,6 +13,7 @@
 import { generateCandles, OHLCCandle } from '@/lib/generateCandles';
 import { mockMarkets } from '@/lib/mockData';
 import { isIndexId } from '@/lib/indexes';
+import { ALL_MARKETS } from '@/lib/allMarkets';
 import type { BulkIndexPrices } from '@/app/api/prices/route';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -146,7 +147,10 @@ function deriveChange(
 
 function mockFallback(skinId: string): SkinPriceData {
   const m    = mockMarkets.find(x => x.skinId === skinId);
-  const base = m?.markPrice ?? 100;
+  // Use allMarkets approxPrice as fallback so DEMO skin/case perps show
+  // realistic prices instead of the hardcoded $100 default.
+  const marketDef = ALL_MARKETS.find(mk => mk.slug === skinId);
+  const base = m?.markPrice ?? marketDef?.approxPrice ?? 100;
 
   // Apply a small random walk (±0.4% per poll) so prices move during testing
   // even when the oracle / external APIs are unreachable.
