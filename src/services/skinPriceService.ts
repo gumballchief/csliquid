@@ -50,10 +50,11 @@ const STALE_MS     = 8_000;   // aggressive client refresh; server cache shields
 const SNAPSHOT_TTL = 26 * 3_600_000; // keep 26 h of snapshots
 
 const RANGE_CFG: Record<PriceRange, { hours: number; count: number }> = {
-  '1H': { hours: 1,   count: 72 },
-  '4H': { hours: 4,   count: 90 },
-  '1D': { hours: 24,  count: 60 },
-  '1W': { hours: 168, count: 52 },
+  // interval (hours per candle) × count = total history window
+  '1H': { hours: 1 / 60,   count: 240 },  // 1-min candles  → 4 hours of data
+  '4H': { hours: 5 / 60,   count: 200 },  // 5-min candles  → ~17 hours of data
+  '1D': { hours: 0.5,       count: 200 },  // 30-min candles → 4 days of data
+  '1W': { hours: 4,         count: 210 },  // 4-hr candles   → 5 weeks of data
 };
 
 // ── Module-level stores (browser singleton) ────────────────────────────────
@@ -152,11 +153,15 @@ function mockFallback(skinId: string): SkinPriceData {
   const marketDef = ALL_MARKETS.find(mk => mk.slug === skinId);
   const base = m?.markPrice ?? marketDef?.approxPrice ?? 100;
 
-  // Apply a small random walk (±0.4% per poll) so prices move during testing
-  // even when the oracle / external APIs are unreachable.
-  const prev  = mockPrices.get(skinId) ?? base;
-  const drift = (Math.random() - 0.5) * 0.008; // −0.4 % … +0.4 %
-  const p     = Math.max(prev * (1 + drift), 0.01);
+  // Gentle random walk (±0.05% per poll) with mean reversion toward approxPrice.
+  const prev = mockPrices.get(skinId) ?? base;
+  const rawDrift = (Math.random() - 0.5) * 0.001; // ±0.05%
+  // Mean reversion: pull back 0.1% per tick when >5% from target price
+  const deviation = (prev - base) / base;
+  const reversion = Math.abs(deviation) > 0.05 ? -deviation * 0.001 : 0;
+  // Hard cap: no more than ±0.3% in one tick
+  const totalDrift = Math.max(-0.003, Math.min(0.003, rawDrift + reversion));
+  const p = Math.max(prev * (1 + totalDrift), 0.01);
   mockPrices.set(skinId, p);
 
   return {
@@ -260,8 +265,14 @@ export async function fetchSkinPrice(skinId: string): Promise<SkinPriceData> {
     if (cached) {
       let price = cached.markPrice;
       if (cached.source !== 'live') {
-        const drift = (Math.random() - 0.5) * 0.008;
-        price = Math.max(price * (1 + drift), 0.01);
+        const marketDef = ALL_MARKETS.find(mk => mk.slug === skinId);
+        const mockMkt   = mockMarkets.find(x => x.skinId === skinId);
+        const base      = mockMkt?.markPrice ?? marketDef?.approxPrice ?? price;
+        const rawDrift  = (Math.random() - 0.5) * 0.001; // ±0.05%
+        const deviation = (price - base) / base;
+        const reversion = Math.abs(deviation) > 0.05 ? -deviation * 0.001 : 0;
+        const totalDrift = Math.max(-0.003, Math.min(0.003, rawDrift + reversion));
+        price = Math.max(price * (1 + totalDrift), 0.01);
         mockPrices.set(skinId, price);
       }
       const stale: SkinPriceData = {

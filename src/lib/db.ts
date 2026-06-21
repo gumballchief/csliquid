@@ -135,15 +135,20 @@ export const db = {
 
   async getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
     const result = await sql`
+      WITH all_wallets AS (
+        SELECT address FROM wallets
+        UNION
+        SELECT DISTINCT wallet AS address FROM positions
+      )
       SELECT
-        w.address                                                         AS wallet,
-        COUNT(p.id)::int                                                  AS trades,
+        aw.address                                                          AS wallet,
+        COUNT(p.id)::int                                                    AS trades,
         COALESCE(SUM(CASE WHEN p.realized_pnl > 0 THEN 1 ELSE 0 END), 0)::int AS wins,
-        COALESCE(SUM(p.notional), 0)                                      AS volume,
-        COALESCE(SUM(p.realized_pnl), 0)                                  AS total_pnl
-      FROM wallets w
-      LEFT JOIN positions p ON p.wallet = w.address AND p.status = 'closed'
-      GROUP BY w.address
+        COALESCE(SUM(p.notional), 0)                                        AS volume,
+        COALESCE(SUM(p.realized_pnl), 0)                                    AS total_pnl
+      FROM all_wallets aw
+      LEFT JOIN positions p ON p.wallet = aw.address AND p.status = 'closed'
+      GROUP BY aw.address
       ORDER BY total_pnl DESC
       LIMIT ${limit}
     `;
