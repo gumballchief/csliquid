@@ -105,12 +105,17 @@ export default function RewardsPage() {
   const { user } = useAuth();
   const wallet = user && 'address' in user ? (user as { address: string }).address : null;
 
-  const [rolling,       setRolling]       = useState(false);
-  const [result,        setResult]        = useState<RollResult | null>(null);
-  const [streak,        setStreak]        = useState(0);
-  const [alreadyRolled, setAlreadyRolled] = useState(false);
-  const [raffle,        setRaffle]        = useState<RaffleStatus | null>(null);
-  const [showHowTo,     setShowHowTo]     = useState(false);
+  const [rolling,        setRolling]        = useState(false);
+  const [result,         setResult]         = useState<RollResult | null>(null);
+  const [streak,         setStreak]         = useState(0);
+  const [alreadyRolled,  setAlreadyRolled]  = useState(false);
+  const [raffle,         setRaffle]         = useState<RaffleStatus | null>(null);
+  const [showHowTo,      setShowHowTo]      = useState(false);
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimType,      setClaimType]      = useState<'skin' | 'usdc' | null>(null);
+  const [steamUsername,  setSteamUsername]  = useState('');
+  const [claimSubmitted, setClaimSubmitted] = useState(false);
+  const [claimError,     setClaimError]     = useState<string | null>(null);
 
   const raffleCountdown = useCountdown(raffle?.endsAt ?? null);
 
@@ -157,6 +162,32 @@ export default function RewardsPage() {
   }, [wallet, rolling]);
 
   const canRoll = !!wallet && !alreadyRolled && !rolling;
+
+  const handleClaim = useCallback(async () => {
+    if (!wallet || !result?.prize || !claimType) return;
+    setClaimError(null);
+    try {
+      const res = await fetch('/api/rewards/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet,
+          prize: result.prize,
+          claimType,
+          steamUsername: claimType === 'skin' ? steamUsername.trim() : undefined,
+          receiveWallet: claimType === 'usdc' ? wallet : undefined,
+        }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string; message?: string };
+      if (!res.ok || !data.ok) {
+        setClaimError(data.error ?? 'Claim failed');
+        return;
+      }
+      setClaimSubmitted(true);
+    } catch {
+      setClaimError('Network error — try again');
+    }
+  }, [wallet, result, claimType, steamUsername]);
 
   return (
     <main style={{ background: BG, minHeight: '100dvh' }} className="px-4 py-6">
@@ -265,19 +296,24 @@ export default function RewardsPage() {
                     <p style={{ color: GREEN }} className="text-[11px] font-mono">
                       Value: ~${result.value?.toLocaleString()}
                     </p>
-                    <p style={{ color: MUTED }} className="text-[9px] font-mono mt-2">
-                      Prize delivery via Skinport voucher or USDC equivalent. Contact @CSLiquidSOL on X.
-                    </p>
-                    {/* Share button */}
-                    <a
-                      href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`I just won a ${result.prize} worth $${result.value?.toLocaleString()} on @CSLiquidSOL! Trade CS2 skin perps on Solana 🎮 csliquid.xyz`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ background: '#1d9bf0', color: '#fff' }}
-                      className="inline-block mt-3 px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-sm hover:opacity-90 transition-opacity"
-                    >
-                      Share on X →
-                    </a>
+                    <div className="flex gap-2 mt-3 justify-center flex-wrap">
+                      <button
+                        onClick={() => setShowClaimModal(true)}
+                        style={{ background: ORANGE, color: '#000' }}
+                        className="px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-sm hover:opacity-90 transition-opacity"
+                      >
+                        Claim Prize →
+                      </button>
+                      <a
+                        href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`I just won a ${result.prize} worth $${result.value?.toLocaleString()} on @CSLiquidSOL! Trade CS2 skin perps on Solana 🎮 csliquid.xyz`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ background: '#1d9bf0', color: '#fff' }}
+                        className="inline-block px-4 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-sm hover:opacity-90 transition-opacity"
+                      >
+                        Share on X →
+                      </a>
+                    </div>
                   </>
                 ) : result.error ? (
                   <>
@@ -369,6 +405,116 @@ export default function RewardsPage() {
         </div>
 
       </div>
+
+      {/* ── Prize Claim Modal ── */}
+      {showClaimModal && result?.won && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowClaimModal(false); }}
+        >
+          <div style={{ background: SURF, border: `1px solid ${BORDER}`, maxWidth: 420, width: '100%' }} className="rounded p-6 space-y-4">
+            {claimSubmitted ? (
+              <>
+                <p style={{ color: GREEN }} className="text-[14px] font-mono font-bold text-center">Claim Submitted!</p>
+                <p style={{ color: MUTED }} className="text-[10px] font-mono text-center">
+                  The team will reach out within 48 hours via {claimType === 'skin' ? `Steam (${steamUsername})` : 'your wallet'}.
+                </p>
+                <button
+                  onClick={() => setShowClaimModal(false)}
+                  style={{ color: MUTED, border: `1px solid ${BORDER}` }}
+                  className="w-full py-2 text-[10px] font-mono uppercase tracking-wider rounded-sm hover:opacity-80 transition-opacity"
+                >
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <p style={{ color: TEXT }} className="text-[12px] font-mono font-bold">Claim Your Prize</p>
+                  <p style={{ color: MUTED }} className="text-[10px] font-mono mt-0.5">{result.prize} · ~${result.value?.toLocaleString()}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setClaimType('skin')}
+                    style={{
+                      background: claimType === 'skin' ? `${ORANGE}20` : 'transparent',
+                      border: `1px solid ${claimType === 'skin' ? ORANGE : BORDER}`,
+                      color: claimType === 'skin' ? ORANGE : MUTED,
+                    }}
+                    className="py-3 text-[10px] font-mono font-bold uppercase tracking-wider rounded-sm transition-all"
+                  >
+                    Claim Skin
+                  </button>
+                  <button
+                    onClick={() => setClaimType('usdc')}
+                    style={{
+                      background: claimType === 'usdc' ? `${GREEN}20` : 'transparent',
+                      border: `1px solid ${claimType === 'usdc' ? GREEN : BORDER}`,
+                      color: claimType === 'usdc' ? GREEN : MUTED,
+                    }}
+                    className="py-3 text-[10px] font-mono font-bold uppercase tracking-wider rounded-sm transition-all"
+                  >
+                    Claim USDC
+                  </button>
+                </div>
+
+                {claimType === 'skin' && (
+                  <div className="space-y-1.5">
+                    <p style={{ color: MUTED }} className="text-[9px] font-mono uppercase tracking-widest">Steam Username</p>
+                    <input
+                      type="text"
+                      value={steamUsername}
+                      onChange={e => setSteamUsername(e.target.value)}
+                      placeholder="YourSteamName"
+                      style={{ background: BG, border: `1px solid ${BORDER}`, color: TEXT, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      className="w-full px-3 py-2 rounded-sm outline-none focus:border-orange-500"
+                    />
+                    <p style={{ color: DIM }} className="text-[8px] font-mono">
+                      We will send a Steam trade offer to this account.
+                    </p>
+                  </div>
+                )}
+
+                {claimType === 'usdc' && wallet && (
+                  <div className="space-y-1.5">
+                    <p style={{ color: MUTED }} className="text-[9px] font-mono uppercase tracking-widest">Receive Wallet</p>
+                    <div style={{ background: BG, border: `1px solid ${BORDER}`, color: MUTED }} className="px-3 py-2 rounded-sm text-[10px] font-mono break-all">
+                      {wallet}
+                    </div>
+                    <p style={{ color: DIM }} className="text-[8px] font-mono">
+                      USDC will be sent to this Solana wallet address.
+                    </p>
+                  </div>
+                )}
+
+                {claimError && (
+                  <p style={{ color: '#f87171' }} className="text-[9px] font-mono">{claimError}</p>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowClaimModal(false)}
+                    style={{ color: MUTED, border: `1px solid ${BORDER}` }}
+                    className="flex-1 py-2 text-[10px] font-mono uppercase tracking-wider rounded-sm hover:opacity-80 transition-opacity"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleClaim}
+                    disabled={!claimType || (claimType === 'skin' && !steamUsername.trim()) || (claimType === 'usdc' && !wallet)}
+                    style={{ background: claimType ? ORANGE : DIM, color: claimType ? '#000' : MUTED }}
+                    className="flex-1 py-2 text-[10px] font-mono font-bold uppercase tracking-wider rounded-sm disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                  >
+                    Submit Claim →
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

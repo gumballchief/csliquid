@@ -25,29 +25,35 @@ export function generateCandles(
   const intervalSec = intervalHours * 3600;
   const rand = makeLCG(Math.round(currentPrice * 100) + intervalHours * 997 + count * 13);
 
-  // Per-candle volatility scales with √(intervalHours) so timeframes look distinct.
-  // 1H ≈ 0.5% body, 4H ≈ 1%, 1D ≈ 2.5%, 1W ≈ 6.5%
-  const volBase = 0.005 * Math.sqrt(intervalHours);
+  // Volatility scales with √(intervalMinutes) for realistic per-candle moves.
+  // 1-min ≈ 0.03%, 5-min ≈ 0.07%, 30-min ≈ 0.17%, 4-hr ≈ 0.46%
+  const intervalMin = intervalHours * 60;
+  const volBase = 0.0003 * Math.sqrt(intervalMin);
+  const MAX_CANDLE_MOVE = 0.003; // hard cap ±0.3% per candle
 
-  // Starting price deviation grows with timeframe — short charts hug current
-  // price (recent history), long charts can start much further away.
-  // 1H: ±2%,  4H: ±4%,  1D: ±10%,  1W: ±22%
-  const startDev = Math.min(0.04 * Math.sqrt(intervalHours), 0.45);
+  // Starting deviation is small — history anchors close to the current price.
+  const startDev = Math.min(0.015 * Math.sqrt(intervalMin), 0.15);
   let price = currentPrice * (1 - startDev / 2 + rand() * startDev);
-  price = Math.max(price, currentPrice * 0.40);
+  price = Math.max(price, currentPrice * 0.60);
 
-  // Mean-reversion strength — increases gently with candle size so longer
-  // charts show clear convergence over time rather than an endless flat line.
-  const driftK = 0.025 + 0.02 * Math.log2(intervalHours + 1);
+  const driftK = 0.03 + 0.015 * Math.log2(intervalMin + 1);
 
   for (let i = count - 1; i >= 0; i--) {
     const time  = now - i * intervalSec;
-    const drift = ((currentPrice - price) / currentPrice) * driftK;
-    const vol   = volBase * (0.7 + rand() * 0.9); // 0.7×–1.6× base each candle
-    const move  = price * (drift + (rand() - 0.47) * vol * 2);
+
+    // Boost mean-reversion sharply when price drifts >5% from target.
+    const deviation   = Math.abs(price - currentPrice) / currentPrice;
+    const driftActual = deviation > 0.05 ? driftK * 4 : driftK;
+    const drift = ((currentPrice - price) / currentPrice) * driftActual;
+
+    const vol  = volBase * (0.7 + rand() * 0.9);
+    let move   = price * (drift + (rand() - 0.47) * vol * 2);
+    // Hard cap to ±0.3% per candle
+    const cap  = price * MAX_CANDLE_MOVE;
+    move = Math.max(-cap, Math.min(cap, move));
 
     const open  = price;
-    const close = Math.max(open + move, open * 0.85);
+    const close = Math.max(open + move, open * 0.90);
     const body  = Math.abs(close - open);
     const high  = Math.max(open, close) + body * (0.2 + rand() * 0.9);
     const low   = Math.min(open, close) - body * (0.2 + rand() * 0.9);

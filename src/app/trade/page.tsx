@@ -58,6 +58,21 @@ function TypeBadge({ type }: { type: MarketType }) {
 function MarketIcon({ market }: { market: MarketDefinition }) {
   const color = TYPE_COLOR[market.type];
   const letter = market.ticker.slice(0, 2);
+  if (market.iconUrl) {
+    return (
+      <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0 border" style={{ borderColor: `${color}40` }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={`/api/img?url=${encodeURIComponent(market.iconUrl)}`}
+          alt={market.shortName}
+          width={40}
+          height={40}
+          className="w-full h-full object-cover"
+          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      </div>
+    );
+  }
   return (
     <div
       className="w-10 h-10 rounded-sm flex items-center justify-center border shrink-0"
