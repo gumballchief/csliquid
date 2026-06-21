@@ -153,8 +153,9 @@ function mockFallback(skinId: string): SkinPriceData {
   const marketDef = ALL_MARKETS.find(mk => mk.slug === skinId);
   const base = m?.markPrice ?? marketDef?.approxPrice ?? 100;
 
-  // Gentle random walk (±0.05% per poll) with mean reversion toward approxPrice.
-  const prev = mockPrices.get(skinId) ?? base;
+  // Apply a small random walk (±0.4% per poll) so prices move during testing
+  // even when the oracle / external APIs are unreachable.
+  const prev  = mockPrices.get(skinId) ?? base;
   const rawDrift = (Math.random() - 0.5) * 0.001; // ±0.05%
   // Mean reversion: pull back 0.1% per tick when >5% from target price
   const deviation = (prev - base) / base;
