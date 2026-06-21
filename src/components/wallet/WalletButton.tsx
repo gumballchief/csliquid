@@ -4,7 +4,6 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import ExportKeyModal   from './ExportKeyModal';
 import SaveAccountModal from './SaveAccountModal';
@@ -65,7 +64,6 @@ export default function WalletButton() {
   const { setVisible }  = useWalletModal();
   const { connection }  = useConnection();
   const { user, isAuthenticated, loginWithWallet, logout } = useAuth();
-  const router          = useRouter();
 
   const [open,        setOpen]        = useState(false);
   const [balance,     setBalance]     = useState<number | null | 'loading'>('loading');
@@ -79,13 +77,15 @@ export default function WalletButton() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setMounted(true); }, []);
 
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef      = useRef<HTMLDivElement>(null);
+  const loggingOutRef = useRef(false);
 
   useEffect(() => {
+    if (loggingOutRef.current) return;
     // Don't overwrite an existing session wallet (generated or email) when Phantom auto-connects.
     // Also check localStorage directly to catch the race condition where the keypair exists
     // but AuthContext hasn't hydrated the user state yet.
-    const hasSessionWallet = user?.type === 'generated' || user?.type === 'email';
+    const hasSessionWallet = user?.type === 'generated' || user?.type === 'email' || user?.type === 'wallet';
     if (connected && publicKey && !hasSessionWallet) {
       try {
         const hasGuestKeypair = !!localStorage.getItem('guest_keypair');
@@ -173,10 +173,11 @@ export default function WalletButton() {
   }
 
   function handleLogout() {
+    loggingOutRef.current = true;
     setOpen(false);
-    if (connected) disconnect();
     logout();
-    router.push('/');
+    if (connected) disconnect();
+    window.location.href = '/';
   }
 
   const solFmt  = (v: number | null | 'loading', decimals = 4) =>

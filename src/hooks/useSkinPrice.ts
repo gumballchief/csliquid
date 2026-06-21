@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   fetchSkinPrice,
   getCached,
@@ -8,12 +8,11 @@ import {
 } from '@/services/skinPriceService';
 import { useOnChainPrices } from '@/hooks/useOnChainPrices';
 
-// How often we hit the API (server 30s cache absorbs Steam rate limits)
 const POLL_INTERVAL_MS = 8_000;
-// How often the displayed price ticks for visual liveness
 const TICK_INTERVAL_MS = 1_000;
-// Max noise per tick — ±0.025% — matches real CS2 market micro-movement
-const TICK_NOISE = 0.00025;
+const TICK_NOISE       = 0.00025;
+// Max oracle price change per 30-second update cycle (dampens violent swings).
+const MAX_PRICE_CHANGE = 0.05;
 
 export interface UseSkinPriceResult extends SkinPriceData {
   loading:     boolean;
@@ -30,31 +29,42 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     () => { const c = getCached(skinId); return c ? new Date(c.fetchedAt) : null; },
   );
 
-  // Ref for tick price — updated every second but does NOT trigger re-renders.
-  // Components read the ref at render time (driven by the 8s API poll / 30s on-chain update).
-  const tickPriceRef = useRef<number>(0);
+  const tickPriceRef       = useRef<number>(0);
+  const mountedRef         = useRef(true);
+  const skinIdRef          = useRef(skinId);
+  skinIdRef.current        = skinId;
+  const realPriceRef       = useRef<number>(0);
+  // Tracks the last publishedAt we acted on — prevents redundant setUpdated calls.
+  const lastPublishedAtRef = useRef<number>(0);
 
-  const mountedRef  = useRef(true);
-  const skinIdRef   = useRef(skinId);
-  skinIdRef.current = skinId;
-  // Real price anchor — updated by on-chain poll (primary) or API fetch (fallback)
-  const realPriceRef = useRef<number>(0);
-  // 24-hour change computed from KV snapshot
   const [changePct24h, setChangePct24h] = useState<number>(0);
 
   // ── On-chain price (30-second poll, highest priority) ──────────────────
   const onChainPrices    = useOnChainPrices();
-  // Ref so doFetch (stable callback) always sees the latest on-chain prices
   const onChainPricesRef = useRef(onChainPrices);
   onChainPricesRef.current = onChainPrices;
 
   useEffect(() => {
     const ocp = onChainPrices[skinId];
     if (!ocp || ocp.price <= 0) return;
-    if (ocp.price === realPriceRef.current) return; // skip no-op updates
-    realPriceRef.current = ocp.price;
-    tickPriceRef.current = ocp.price;
-    setUpdated(new Date(ocp.publishedAt * 1000));
+
+    // Skip when both price and timestamp are unchanged — prevents extra renders.
+    const samePrice = ocp.price === realPriceRef.current;
+    const sameTime  = ocp.publishedAt === lastPublishedAtRef.current;
+    if (samePrice && sameTime) return;
+
+    // Clamp to ±5% per oracle update to smooth out violent price jumps.
+    const prev    = realPriceRef.current;
+    const raw     = ocp.price;
+    const clamped = prev > 0
+      ? Math.min(Math.max(raw, prev * (1 - MAX_PRICE_CHANGE)), prev * (1 + MAX_PRICE_CHANGE))
+      : raw;
+
+    realPriceRef.current       = clamped;
+    tickPriceRef.current       = clamped;
+    lastPublishedAtRef.current = ocp.publishedAt;
+    const nextMs = ocp.publishedAt * 1000;
+    setUpdated(prev => (prev !== null && prev.getTime() === nextMs ? prev : new Date(nextMs)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onChainPrices, skinId]);
 
@@ -65,16 +75,23 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     try {
       const result = await fetchSkinPrice(id);
       if (!mountedRef.current || skinIdRef.current !== id) return;
-      setData(result);
+      setData(prev =>
+        prev &&
+        prev.markPrice === result.markPrice &&
+        prev.source    === result.source    &&
+        prev.changePct24h === result.changePct24h
+          ? prev
+          : result,
+      );
       setError(null);
-      // Snap tick price to API price only when no fresh on-chain price is available
       if (result.markPrice > 0) {
         const ocp = onChainPricesRef.current[id];
         const hasChainPrice = ocp && ocp.price > 0;
         if (!hasChainPrice) {
           realPriceRef.current = result.markPrice;
           tickPriceRef.current = result.markPrice;
-          setUpdated(new Date(result.fetchedAt));
+          const nextMs = result.fetchedAt;
+          setUpdated(prev => (prev !== null && prev.getTime() === nextMs ? prev : new Date(nextMs)));
         }
       }
     } catch (err) {
@@ -103,7 +120,6 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     const timer = setInterval(fetchChange, 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [skinId]);
-
 
   // Poll API on mount + skinId change
   useEffect(() => {
@@ -137,7 +153,6 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
 
   // 1-second micro-tick: random walk around the real price anchor.
   // Updates a ref (not state) so it never causes a re-render by itself.
-  // The animated value is read by callers at their next render (API poll / on-chain update).
   useEffect(() => {
     const tick = setInterval(() => {
       const base = realPriceRef.current;
@@ -150,7 +165,7 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     return () => clearInterval(tick);
   }, []);
 
-  const fallback: SkinPriceData = {
+  const fallback = useMemo<SkinPriceData>(() => ({
     skinId,
     markPrice:    0,
     indexPrice:   0,
@@ -163,13 +178,13 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     histories:    { '1H': [], '4H': [], '1D': [], '1W': [] },
     source:       'mock',
     fetchedAt:    0,
-  };
+  }), [skinId]);
 
-  const base = data ?? fallback;
-
-  // Use tick price (ref) when we have a live/cached real price; otherwise raw API value
+  const base       = data ?? fallback;
   const markPrice  = (tickPriceRef.current > 0 && base.markPrice > 0) ? tickPriceRef.current : base.markPrice;
   const indexPrice = markPrice * 0.9998;
+
+  const refetch = useCallback(() => doFetch(true), [doFetch]);
 
   return {
     ...base,
@@ -179,6 +194,6 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     loading,
     error,
     lastUpdated,
-    refetch: () => doFetch(true),
+    refetch,
   };
 }
