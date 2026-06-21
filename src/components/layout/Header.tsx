@@ -9,10 +9,12 @@ import Logo from '@/components/layout/Logo';
 const NAV = [
   { label: 'Trade',       href: '/trade' },
   { label: 'CS500',       href: '/cs500' },
+  { label: 'Indices',     href: '/indices' },
   { label: 'Pool',        href: '/pool' },
   { label: 'Stats',       href: '/stats' },
   { label: 'Portfolio',   href: '/portfolio' },
   { label: 'Prize Pool',  href: '/prize-pool' },
+  { label: 'Rewards',     href: '/rewards' },
   { label: 'Leaderboard', href: '/leaderboard' },
   { label: 'Referral',    href: '/referral' },
   { label: 'Docs',        href: '/docs' },
