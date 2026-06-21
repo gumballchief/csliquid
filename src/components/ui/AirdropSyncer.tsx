@@ -8,6 +8,8 @@ import { useToastStore } from '@/store/toastStore';
 import { fetchUserAccountBalance, sendDepositKeypair } from '@/lib/program';
 import { decodeBase58 } from '@/lib/base58';
 
+const SOL_LOW_THRESHOLD = 5_000_000; // 0.005 SOL — re-seed if wallet drops below this
+
 /**
  * Detects first-time users (no on-chain UserAccount) and:
  *  1. Calls POST /api/airdrop — admin sends 10,000 USDC + 0.01 SOL (if needed)
@@ -40,10 +42,25 @@ export default function AirdropSyncer() {
 
     (async () => {
       try {
-        // Only trigger for brand-new users (UserAccount PDA doesn't exist yet)
+        // Check UserAccount PDA existence
         const balance = await fetchUserAccountBalance(connection, new PublicKey(signerAddress));
         console.log('[AirdropSyncer] userAccountBalance:', balance, 'wallet:', signerAddress);
+
         if (balance !== null) {
+          // Existing user — still check SOL and re-seed if below threshold so
+          // transactions don't fail with "insufficient funds for rent".
+          const solBalance = await connection.getBalance(new PublicKey(signerAddress)).catch(() => Infinity);
+          console.log('[AirdropSyncer] existing user solBalance:', solBalance);
+          if (solBalance < SOL_LOW_THRESHOLD) {
+            console.log('[AirdropSyncer] SOL low — requesting re-seed...');
+            const res = await fetch('/api/airdrop', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ wallet: signerAddress }),
+            });
+            const data = await res.json().catch(() => ({}));
+            console.log('[AirdropSyncer] sol re-seed response:', data);
+          }
           if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(sessionKey, 'existing');
           return;
         }

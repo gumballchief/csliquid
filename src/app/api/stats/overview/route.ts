@@ -7,7 +7,7 @@ import { COMMITMENT, PROGRAM_ID, RPC_URL } from '@/lib/config';
 
 const connection = new Connection(RPC_URL, COMMITMENT);
 
-// sha256("global:position")[0:8] = [170, 188, 143, 228, 122, 64, 247, 208]
+// sha256("account:Position")[0:8] = [170, 188, 143, 228, 122, 64, 247, 208]
 // base58 of those 8 bytes:
 const POSITION_DISCRIMINATOR_B58 = 'VZMoMoKgZQb';
 
@@ -35,10 +35,16 @@ export async function GET(): Promise<NextResponse> {
     console.error('[stats/overview] on-chain error:', err);
   }
 
-  // Postgres: unique wallets across all position records
+  // Postgres: unique wallets + open position count fallback
   try {
-    const result = await sql`SELECT COUNT(DISTINCT wallet)::int AS count FROM positions`;
-    uniqueTraders = Number(result.rows[0]?.count ?? 0);
+    const [traders, openCount] = await Promise.all([
+      sql`SELECT COUNT(DISTINCT wallet)::int AS count FROM positions`,
+      sql`SELECT COUNT(*)::int AS count FROM positions WHERE status = 'open'`,
+    ]);
+    uniqueTraders = Number(traders.rows[0]?.count ?? 0);
+    if (activePositions === 0) {
+      activePositions = Number(openCount.rows[0]?.count ?? 0);
+    }
   } catch {
     // Postgres not configured — leave as 0
   }

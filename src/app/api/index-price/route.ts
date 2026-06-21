@@ -1,11 +1,8 @@
 /**
  * GET /api/index-price?id={indexId}
  *
- * Returns the live index price as the simple average of each constituent
- * skin's midpoint price: (lowest_listing_price + median_sale_price) / 2.
- *
- * CS500 is computed from every constituent across all four base indices
- * (AWP + AK-47 + Knife + Glove = 40 skins total).
+ * Returns the live index price. AWP/AK47/Knife/Glove use average midpoint;
+ * CS500 uses sum(midpoints) / CS500_DIVISOR (DJIA-style) with ±3% clamp + EWMA α=0.05.
  *
  * Falls back to last cached value when fetches fail.
  */
@@ -16,7 +13,7 @@ import { INDEX_DEFINITIONS } from '@/lib/indexes';
 const FETCH_TIMEOUT_MS = 5_000;
 const CACHE_TTL        = 30_000;
 
-const BASE_IDS = ['awp-index', 'ak47-index', 'knife-index', 'glove-index'] as const;
+const CS500_DIVISOR = 3.5;
 
 // ── Module-level cache ─────────────────────────────────────────────────────
 
@@ -105,15 +102,25 @@ function computeIndex(constituents: ConstituentPrice[]): { price: number; volume
   return { price, volume };
 }
 
+function computeCs500(constituents: ConstituentPrice[], prevPrice: number): { price: number; volume: number } {
+  const sum    = constituents.reduce((s, c) => s + c.midpoint, 0);
+  const volume = constituents.reduce((s, c) => s + c.lowest * c.volume, 0);
+  const raw    = sum / CS500_DIVISOR;
+  let price    = raw;
+  if (prevPrice > 0 && raw > 0) {
+    const clamped = Math.min(Math.max(raw, prevPrice * 0.97), prevPrice * 1.03);
+    price = prevPrice * 0.95 + clamped * 0.05;
+  }
+  return { price, volume };
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   const indexId = req.nextUrl.searchParams.get('id') ?? '';
 
-  // CS500: all constituents from all 4 base indices
-  const constituentHashNames = indexId === 'cs500-index'
-    ? Array.from(new Set(BASE_IDS.flatMap(id => INDEX_DEFINITIONS[id].constituents.map(c => c.hashName))))
-    : INDEX_DEFINITIONS[indexId]?.constituents.map(c => c.hashName) ?? null;
+  // CS500 uses its own 25-skin constituent list (not derived from the 4 base indices)
+  const constituentHashNames = INDEX_DEFINITIONS[indexId]?.constituents.map(c => c.hashName) ?? null;
 
   if (!constituentHashNames) {
     return NextResponse.json({ error: `Unknown index ID: ${indexId}` }, { status: 400 });
@@ -156,7 +163,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'All constituent fetches failed', failures }, { status: 503 });
   }
 
-  const { price, volume } = computeIndex(successful);
+  const prevPrice = hit?.price ?? 0;
+  const { price, volume } = indexId === 'cs500-index'
+    ? computeCs500(successful, prevPrice)
+    : computeIndex(successful);
   indexCache.set(indexId, { price, volume, ts: Date.now() });
 
   return NextResponse.json({

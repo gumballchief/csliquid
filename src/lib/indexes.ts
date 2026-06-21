@@ -102,14 +102,45 @@ export const INDEX_DEFINITIONS: Record<string, SkinIndexDefinition> = {
     ],
   },
 
+  // CS500: 25 flagship skins spanning all price tiers (budget → ultra-premium).
+  // Index methodology: sum(median_listing_price per skin) / CS500_DIVISOR (DJIA-style).
+  // Divisor set so the index opens near $3,000 at mid-2025 market prices.
   'cs500-index': {
     id:          'cs500-index',
     name:        'CS500 Index',
     weapon:      'CS500',
-    description: 'Simple average of the midpoint price of every constituent skin across all four base indices (AWP + AK-47 + Knife + Glove, 40 skins total)',
-    constituents: [],
-    // Constituents are derived at runtime from all four base indices —
-    // see /api/prices and /api/index-price for the actual implementation.
+    description: 'Price-weighted index of 25 flagship CS2 skins spanning all tiers. Calculated as sum(median listing price per skin) / 3.5 — analogous to the Dow Jones methodology. Target range $2,000–$5,000.',
+    constituents: [
+      // Ultra-premium ($900–$1,500)
+      { hashName: 'AWP | Dragon Lore (Factory New)',                  staticWeight: 0.04 },
+      { hashName: "★ Sport Gloves | Pandora's Box (Field-Tested)",    staticWeight: 0.04 },
+      { hashName: '★ Sport Gloves | Vice (Field-Tested)',             staticWeight: 0.04 },
+      { hashName: '★ Karambit | Fade (Factory New)',                  staticWeight: 0.04 },
+      { hashName: '★ Butterfly Knife | Fade (Factory New)',           staticWeight: 0.04 },
+      // High-premium ($300–$900)
+      { hashName: '★ M9 Bayonet | Fade (Factory New)',                staticWeight: 0.04 },
+      { hashName: '★ Karambit | Doppler (Factory New)',               staticWeight: 0.04 },
+      { hashName: '★ Specialist Gloves | Crimson Kimono (Well-Worn)', staticWeight: 0.04 },
+      { hashName: '★ Butterfly Knife | Doppler (Factory New)',        staticWeight: 0.04 },
+      { hashName: '★ Hand Wraps | Cobalt Skulls (Field-Tested)',      staticWeight: 0.04 },
+      { hashName: '★ Karambit | Tiger Tooth (Factory New)',           staticWeight: 0.04 },
+      { hashName: '★ Bayonet | Fade (Factory New)',                   staticWeight: 0.04 },
+      { hashName: '★ Driver Gloves | King Snake (Field-Tested)',      staticWeight: 0.04 },
+      { hashName: '★ Flip Knife | Fade (Factory New)',                staticWeight: 0.04 },
+      { hashName: '★ Moto Gloves | Spearmint (Field-Tested)',         staticWeight: 0.04 },
+      // Mid-tier ($50–$300)
+      { hashName: 'AK-47 | Wild Lotus (Well-Worn)',                   staticWeight: 0.04 },
+      { hashName: 'AK-47 | Fire Serpent (Field-Tested)',              staticWeight: 0.04 },
+      { hashName: 'AWP | Lightning Strike (Factory New)',             staticWeight: 0.04 },
+      { hashName: 'AWP | Medusa (Field-Tested)',                      staticWeight: 0.04 },
+      { hashName: 'AK-47 | Vulcan (Field-Tested)',                    staticWeight: 0.04 },
+      { hashName: 'AK-47 | Case Hardened (Field-Tested)',             staticWeight: 0.04 },
+      // Budget ($5–$50)
+      { hashName: 'AK-47 | Neon Rider (Well-Worn)',                   staticWeight: 0.04 },
+      { hashName: 'AWP | Hyper Beast (Field-Tested)',                 staticWeight: 0.04 },
+      { hashName: 'AWP | Asiimov (Field-Tested)',                     staticWeight: 0.04 },
+      { hashName: 'AK-47 | Redline (Field-Tested)',                   staticWeight: 0.04 },
+    ],
   },
 };
 

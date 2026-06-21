@@ -1,6 +1,6 @@
 import express from 'express';
 import cron from 'node-cron';
-import { INDEX_DEFINITIONS, INDEX_IDS } from './indexes';
+import { INDEX_DEFINITIONS, INDEX_IDS, CS500_DIVISOR } from './indexes';
 import { fetchCSFloat } from './fetchers/csfloat';
 import { fetchSkinportAll, type SkinportResult } from './fetchers/skinport';
 import { fetchSteamLowest } from './fetchers/steam';
@@ -9,6 +9,17 @@ import { insertPrice, getLatestPrice, getPriceHistory, pruneOldRecords } from '.
 import type { ConstituentResult } from './types';
 
 const PORT = Number(process.env.ORACLE_PORT ?? 3001);
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
 
 // ── Price update cycle ─────────────────────────────────────────────────────
 
@@ -23,7 +34,7 @@ async function updateIndex(
       const prices: number[] = [];
       let volume = 0;
 
-      // CSFloat — up to 50 buy-now listings
+      // CSFloat — up to 50 buy-now listings (individual listing prices)
       try {
         const cf = await fetchCSFloat(c.hashName);
         prices.push(...cf.prices);
@@ -32,7 +43,7 @@ async function updateIndex(
         console.warn(`[oracle] csfloat ${c.hashName}: ${(err as Error).message}`);
       }
 
-      // Skinport — contributes both min and max of the platform range
+      // Skinport — min and max listing prices
       const sp = skinportMap.get(c.hashName);
       if (sp) {
         prices.push(sp.minPrice);
@@ -40,19 +51,18 @@ async function updateIndex(
         volume += sp.quantity;
       }
 
-      // Steam — lowest listing as an additional lower bound
+      // Steam — lowest listing as additional data point
       try {
         const steam = await fetchSteamLowest(c.hashName);
         prices.push(steam.lowestPrice);
       } catch {
-        // Steam is optional — proceed with CSFloat + Skinport
+        // Steam optional
       }
 
       if (prices.length === 0) throw new Error(`no_prices: ${c.hashName}`);
 
-      const minPrice = Math.min(...prices);
-      const maxPrice = Math.max(...prices);
-      const price    = (minPrice + maxPrice) / 2;
+      // Use median listing price (robust to outlier high/low asks).
+      const price = median(prices);
 
       return { hashName: c.hashName, price, volume, staticWeight: c.staticWeight };
     }),
@@ -72,19 +82,48 @@ async function updateIndex(
     return;
   }
 
-  const { price: rawPrice, volume } = computeIndexVwap(successful);
+  let rawPrice: number;
+  let volume: number;
 
-  // Cap per-cycle move at 20% to absorb bad CSFloat/Skinport listings.
+  if (indexId === 'cs500-index') {
+    // CS500 methodology: sum of median listing prices / fixed divisor (DJIA-style).
+    // This produces an index value ~$2,000–$5,000 — well above any single-weapon index.
+    const sum = successful.reduce((s, c) => s + c.price, 0);
+    rawPrice = sum / CS500_DIVISOR;
+    volume   = successful.reduce((s, c) => s + c.price * c.volume, 0);
+  } else {
+    // Other indices: volume-weighted average price (VWAP) of constituent medians.
+    const result = computeIndexVwap(successful);
+    rawPrice = result.price;
+    volume   = result.volume;
+  }
+
   const prevRow = getLatestPrice(indexId);
   let price = rawPrice;
+
   if (prevRow && prevRow.price > 0) {
-    const maxMove = prevRow.price * 0.20;
-    if (Math.abs(price - prevRow.price) > maxMove) {
-      price = prevRow.price + Math.sign(price - prevRow.price) * maxMove;
-      console.warn(
-        `[oracle] ${indexId}: price capped ${rawPrice.toFixed(2)} → ${price.toFixed(2)} ` +
-        `(prev=${prevRow.price.toFixed(2)}, raw_move=${((rawPrice - prevRow.price) / prevRow.price * 100).toFixed(1)}%)`,
-      );
+    if (indexId === 'cs500-index') {
+      // CS500: tight ±3% clamp + EWMA α=0.05 for smooth index-like behaviour.
+      const lo      = prevRow.price * 0.97;
+      const hi      = prevRow.price * 1.03;
+      const clamped = Math.min(Math.max(rawPrice, lo), hi);
+      price         = prevRow.price * 0.95 + clamped * 0.05;
+      if (rawPrice !== price) {
+        console.info(
+          `[oracle] cs500-index EWMA: raw=$${rawPrice.toFixed(2)} → smoothed=$${price.toFixed(2)} ` +
+          `(prev=$${prevRow.price.toFixed(2)})`,
+        );
+      }
+    } else {
+      // Other indices: ±20% hard cap to absorb bad CSFloat/Skinport listings.
+      const maxMove = prevRow.price * 0.20;
+      if (Math.abs(rawPrice - prevRow.price) > maxMove) {
+        price = prevRow.price + Math.sign(rawPrice - prevRow.price) * maxMove;
+        console.warn(
+          `[oracle] ${indexId}: price capped ${rawPrice.toFixed(2)} → ${price.toFixed(2)} ` +
+          `(prev=${prevRow.price.toFixed(2)}, raw_move=${((rawPrice - prevRow.price) / prevRow.price * 100).toFixed(1)}%)`,
+        );
+      }
     }
   }
 

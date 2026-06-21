@@ -1,6 +1,8 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
+import { useWallet } from '@solana/wallet-adapter-react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import AuthGuard from '@/components/auth/AuthGuard';
 import AuthScreen from '@/components/auth/AuthScreen';
@@ -21,7 +23,19 @@ const WalletContextProvider = dynamic(
  * Shows the full-page AuthScreen until the user has chosen how to log in.
  */
 function AppShell({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, hydrated } = useAuth();
+  const { isAuthenticated, hydrated, user, logout } = useAuth();
+  const { connected } = useWallet();
+  const prevConnectedRef = useRef(false);
+
+  // When Phantom goes connected → disconnected, clear wallet-type auth so
+  // the three-option screen shows rather than leaving the user in a broken state.
+  useEffect(() => {
+    const wasConnected = prevConnectedRef.current;
+    prevConnectedRef.current = connected;
+    if (wasConnected && !connected && user?.type === 'wallet') {
+      logout();
+    }
+  }, [connected, user, logout]);
 
   // Render nothing until localStorage has been read to avoid flash.
   if (!hydrated) return null;
@@ -46,10 +60,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
-    <WalletContextProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <WalletContextProvider>
         <AppShell>{children}</AppShell>
-      </AuthProvider>
-    </WalletContextProvider>
+      </WalletContextProvider>
+    </AuthProvider>
   );
 }

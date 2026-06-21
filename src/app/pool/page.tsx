@@ -80,7 +80,8 @@ export default function PoolPage() {
 
   const pool = usePoolStats();
 
-  const { connected, publicKey, wallet } = useWallet();
+  const walletCtx                        = useWallet();
+  const { connected, publicKey, wallet } = walletCtx;
   const { connection }                   = useConnection();
   const { user, getKeypair }             = useAuth();
 
@@ -159,7 +160,7 @@ export default function PoolPage() {
     setTxStatus('Depositing…');
     try {
       if (connected && publicKey && wallet?.adapter) {
-        const prog = getProgram(connection, { connected, publicKey, wallet: wallet.adapter } as never);
+        const prog = getProgram(connection, walletCtx);
         await sendAddLiquidity(prog, publicKey, amt);
       } else {
         const signer = getSigner();
@@ -186,7 +187,7 @@ export default function PoolPage() {
     setTxStatus('Withdrawing…');
     try {
       if (connected && publicKey && wallet?.adapter) {
-        const prog = getProgram(connection, { connected, publicKey, wallet: wallet.adapter } as never);
+        const prog = getProgram(connection, walletCtx);
         await sendRemoveLiquidity(prog, publicKey, withdrawLpTokens);
       } else {
         const signer = getSigner();
@@ -214,7 +215,7 @@ export default function PoolPage() {
     try {
       const allLpTokens = new BN(Math.round(lpPos.lpTokens * 1_000_000));
       if (connected && publicKey && wallet?.adapter) {
-        const prog = getProgram(connection, { connected, publicKey, wallet: wallet.adapter } as never);
+        const prog = getProgram(connection, walletCtx);
         await sendRemoveLiquidity(prog, publicKey, allLpTokens);
       } else {
         const signer = getSigner();

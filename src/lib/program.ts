@@ -99,6 +99,46 @@ export function findLpPositionPda(owner: PublicKey): PublicKey {
 
 const CONFIRM_OPTS: ConfirmOptions = { commitment: COMMITMENT };
 
+// ── Transaction helpers ───────────────────────────────────────────────────────
+
+/** Wraps an Anchor .rpc() Promise with a hard 30-second timeout. */
+async function rpcWithTimeout(promise: Promise<string>, timeoutMs = 30_000): Promise<string> {
+  return Promise.race([
+    promise,
+    new Promise<string>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('Transaction timed out — check your wallet and try again')),
+        timeoutMs,
+      ),
+    ),
+  ]);
+}
+
+/**
+ * Polls getSignatureStatus every 1.5 s until the tx is confirmed or 30 s pass.
+ * Replaces connection.confirmTransaction() which drops silently on devnet.
+ */
+async function pollConfirmation(connection: Connection, sig: string): Promise<void> {
+  const POLL_MS    = 1_500;
+  const TIMEOUT_MS = 30_000;
+  const deadline   = Date.now() + TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    try {
+      const { value } = await connection.getSignatureStatus(sig, { searchTransactionHistory: false });
+      if (value) {
+        if (value.err) throw new Error(`Transaction failed: ${JSON.stringify(value.err)}`);
+        if (value.confirmationStatus === 'confirmed' || value.confirmationStatus === 'finalized') return;
+      }
+    } catch (err) {
+      const msg = (err as Error).message ?? '';
+      if (msg.startsWith('Transaction failed')) throw err;
+    }
+    await new Promise(r => setTimeout(r, POLL_MS));
+  }
+  throw new Error('Transaction timed out — check your wallet and try again');
+}
+
 export function getProgram(connection: Connection, wallet: WalletContextState): Program {
   if (!wallet.publicKey || !wallet.signTransaction || !wallet.signAllTransactions) {
     throw new Error('Wallet not connected');
@@ -169,23 +209,25 @@ export async function sendOpenPosition(
   const slippageMul   = isLong ? 1 + slippagePct / 100 : 1000;
   const maxEntryPrice = toUsdcLamports(markPrice * slippageMul);
 
-  return program.methods
-    .openPosition({
-      isLong,
-      collateral:    toUsdcLamports(collateral),
-      leverage,
-      maxEntryPrice,
-    })
-    .accounts({
-      owner,
-      userAccount,
-      market,
-      position,
-      priceFeed,
-      liquidityPool: findLiquidityPoolPda(),
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .openPosition({
+        isLong,
+        collateral:    toUsdcLamports(collateral),
+        leverage,
+        maxEntryPrice,
+      })
+      .accounts({
+        owner,
+        userAccount,
+        market,
+        position,
+        priceFeed,
+        liquidityPool: findLiquidityPoolPda(),
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 /**
@@ -237,7 +279,7 @@ export async function sendOpenPositionKeypair(
   tx.sign(signer);
 
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  await pollConfirmation(connection, sig);
   return sig;
 }
 
@@ -255,18 +297,20 @@ export async function sendClosePosition(
   const position    = findPositionPda(owner, market);
   const userAccount = findUserAccountPda(owner);
 
-  return program.methods
-    .closePosition()
-    .accounts({
-      owner,
-      userAccount,
-      market,
-      position,
-      priceFeed,
-      liquidityPool: findLiquidityPoolPda(),
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .closePosition()
+      .accounts({
+        owner,
+        userAccount,
+        market,
+        position,
+        priceFeed,
+        liquidityPool: findLiquidityPoolPda(),
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 /**
@@ -313,7 +357,7 @@ export async function sendClosePositionKeypair(
   tx.sign(signer);
 
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  await pollConfirmation(connection, sig);
   return sig;
 }
 
@@ -332,21 +376,23 @@ export async function sendAddLiquidity(
   const vaultAuthority = findVaultAuthorityPda();
   const userUsdcAccount = getUserUsdcAta(owner);
 
-  return program.methods
-    .addLiquidity(toUsdcLamports(amountUsd))
-    .accounts({
-      owner,
-      lpPosition,
-      liquidityPool,
-      userUsdcAccount,
-      vaultToken,
-      vaultData,
-      vaultAuthority,
-      usdcMint:      USDC_MINT,
-      tokenProgram:  TOKEN_PROGRAM_ID,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .addLiquidity(toUsdcLamports(amountUsd))
+      .accounts({
+        owner,
+        lpPosition,
+        liquidityPool,
+        userUsdcAccount,
+        vaultToken,
+        vaultData,
+        vaultAuthority,
+        usdcMint:      USDC_MINT,
+        tokenProgram:  TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 /**
@@ -364,22 +410,24 @@ export async function sendRemoveLiquidity(
   const vaultAuthority = findVaultAuthorityPda();
   const userUsdcAccount = getUserUsdcAta(owner);
 
-  return program.methods
-    .removeLiquidity(lpTokens)
-    .accounts({
-      owner,
-      lpPosition,
-      liquidityPool,
-      userUsdcAccount,
-      vaultToken,
-      vaultData,
-      vaultAuthority,
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-      systemProgram:          SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .removeLiquidity(lpTokens)
+      .accounts({
+        owner,
+        lpPosition,
+        liquidityPool,
+        userUsdcAccount,
+        vaultToken,
+        vaultData,
+        vaultAuthority,
+        usdcMint:               USDC_MINT,
+        tokenProgram:           TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram:          SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 const ASSOC_TOKEN_PROGRAM = new PublicKey(
@@ -411,20 +459,22 @@ export async function sendDeposit(
   owner: PublicKey,
   amountUsd: number,
 ): Promise<string> {
-  return program.methods
-    .deposit(toUsdcLamports(amountUsd))
-    .accounts({
-      owner,
-      userAccount:            findUserAccountPda(owner),
-      userUsdcAccount:        getUserUsdcAta(owner),
-      vaultToken:             findVaultTokenPda(),
-      vaultData:              findVaultDataPda(),
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
-      systemProgram:          SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .deposit(toUsdcLamports(amountUsd))
+      .accounts({
+        owner,
+        userAccount:            findUserAccountPda(owner),
+        userUsdcAccount:        getUserUsdcAta(owner),
+        vaultToken:             findVaultTokenPda(),
+        vaultData:              findVaultDataPda(),
+        usdcMint:               USDC_MINT,
+        tokenProgram:           TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
+        systemProgram:          SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 /**
@@ -448,20 +498,22 @@ export async function sendDepositKeypair(
   const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
   const program  = new Program(rawIdl as unknown as Idl, provider);
 
-  return program.methods
-    .deposit(toUsdcLamports(amountUsd))
-    .accounts({
-      owner,
-      userAccount:            findUserAccountPda(owner),
-      userUsdcAccount:        getUserUsdcAta(owner),
-      vaultToken:             findVaultTokenPda(),
-      vaultData:              findVaultDataPda(),
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
-      systemProgram:          SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .deposit(toUsdcLamports(amountUsd))
+      .accounts({
+        owner,
+        userAccount:            findUserAccountPda(owner),
+        userUsdcAccount:        getUserUsdcAta(owner),
+        vaultToken:             findVaultTokenPda(),
+        vaultData:              findVaultDataPda(),
+        usdcMint:               USDC_MINT,
+        tokenProgram:           TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
+        systemProgram:          SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 /**
@@ -472,21 +524,23 @@ export async function sendWithdraw(
   owner: PublicKey,
   amountUsd: number,
 ): Promise<string> {
-  return program.methods
-    .withdraw(toUsdcLamports(amountUsd))
-    .accounts({
-      owner,
-      userAccount:            findUserAccountPda(owner),
-      userUsdcAccount:        getUserUsdcAta(owner),
-      vaultToken:             findVaultTokenPda(),
-      vaultData:              findVaultDataPda(),
-      vaultAuthority:         findVaultAuthorityPda(),
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
-      systemProgram:          SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    program.methods
+      .withdraw(toUsdcLamports(amountUsd))
+      .accounts({
+        owner,
+        userAccount:            findUserAccountPda(owner),
+        userUsdcAccount:        getUserUsdcAta(owner),
+        vaultToken:             findVaultTokenPda(),
+        vaultData:              findVaultDataPda(),
+        vaultAuthority:         findVaultAuthorityPda(),
+        usdcMint:               USDC_MINT,
+        tokenProgram:           TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
+        systemProgram:          SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 /**
@@ -509,21 +563,23 @@ export async function sendWithdrawKeypair(
   const provider = new AnchorProvider(connection, walletLike as never, CONFIRM_OPTS);
   const prog     = new Program(rawIdl as unknown as Idl, provider);
 
-  return prog.methods
-    .withdraw(toUsdcLamports(amountUsd))
-    .accounts({
-      owner,
-      userAccount:            findUserAccountPda(owner),
-      userUsdcAccount:        getUserUsdcAta(owner),
-      vaultToken:             findVaultTokenPda(),
-      vaultData:              findVaultDataPda(),
-      vaultAuthority:         findVaultAuthorityPda(),
-      usdcMint:               USDC_MINT,
-      tokenProgram:           TOKEN_PROGRAM_ID,
-      associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
-      systemProgram:          SystemProgram.programId,
-    })
-    .rpc();
+  return rpcWithTimeout(
+    prog.methods
+      .withdraw(toUsdcLamports(amountUsd))
+      .accounts({
+        owner,
+        userAccount:            findUserAccountPda(owner),
+        userUsdcAccount:        getUserUsdcAta(owner),
+        vaultToken:             findVaultTokenPda(),
+        vaultData:              findVaultDataPda(),
+        vaultAuthority:         findVaultAuthorityPda(),
+        usdcMint:               USDC_MINT,
+        tokenProgram:           TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOC_TOKEN_PROGRAM,
+        systemProgram:          SystemProgram.programId,
+      })
+      .rpc(),
+  );
 }
 
 // ── LP position / wallet balance helpers ────────────────────────────────────
@@ -596,7 +652,7 @@ export async function sendAddLiquidityKeypair(
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: owner }).add(ix);
   tx.sign(signer);
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  await pollConfirmation(connection, sig);
   return sig;
 }
 
@@ -636,7 +692,7 @@ export async function sendRemoveLiquidityKeypair(
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: owner }).add(ix);
   tx.sign(signer);
   const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-  await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight });
+  await pollConfirmation(connection, sig);
   return sig;
 }
 

@@ -104,9 +104,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    // Check USDC-airdrop status — but always still check SOL balance below.
+    let alreadyAirdroppedUsdc = false;
     if (kvAvailable()) {
       const existing = await kv.get(`airdropped:${wallet}`);
-      if (existing) return NextResponse.json({ already: true });
+      alreadyAirdroppedUsdc = !!existing;
     }
 
     const adminKeyRaw = process.env.ADMIN_KEYPAIR_BASE58;
@@ -131,10 +133,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const adminAta   = getAta(admin.publicKey, USDC_MINT);
     const userAta    = getAta(userPubkey, USDC_MINT);
 
-    // Check if user needs SOL seeded (for session wallet tx fees + account rent)
+    // Always check SOL balance — re-seed if below threshold even for returning users
+    // whose SOL was spent on prior transactions.
     const userSolBal = await connection.getBalance(userPubkey).catch(() => 0);
     const needsSol   = userSolBal < SOL_MIN_THRESHOLD;
-    console.log(`[airdrop] wallet=${wallet} solBal=${userSolBal} needsSol=${needsSol}`);
+    console.log(`[airdrop] wallet=${wallet} solBal=${userSolBal} needsSol=${needsSol} alreadyUsdc=${alreadyAirdroppedUsdc}`);
+
+    // Nothing to do — already has USDC and enough SOL.
+    if (alreadyAirdroppedUsdc && !needsSol) {
+      return NextResponse.json({ already: true });
+    }
 
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: admin.publicKey });
@@ -150,8 +158,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    tx.add(createAtaIdempotentIx(admin.publicKey, userPubkey, USDC_MINT));
-    tx.add(transferIx(adminAta, userAta, admin.publicKey, AIRDROP_AMOUNT));
+    // Only send USDC if this wallet hasn't received it before.
+    if (!alreadyAirdroppedUsdc) {
+      tx.add(createAtaIdempotentIx(admin.publicKey, userPubkey, USDC_MINT));
+      tx.add(transferIx(adminAta, userAta, admin.publicKey, AIRDROP_AMOUNT));
+    }
     tx.sign(admin);
 
     const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
@@ -167,9 +178,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       console.warn(`[airdrop] confirmation timed out — tx ${sig} still in flight`);
     });
 
-    console.log(`[airdrop] done tx=${sig} solSeeded=${needsSol}`);
+    console.log(`[airdrop] done tx=${sig} solSeeded=${needsSol} usdcSent=${!alreadyAirdroppedUsdc}`);
 
-    if (kvAvailable()) {
+    // Only record USDC airdrop once — SOL re-seeds don't update this key so
+    // future low-balance calls can still pass through the gate above.
+    if (!alreadyAirdroppedUsdc && kvAvailable()) {
       await kv.set(`airdropped:${wallet}`, { ts: Date.now(), tx: sig });
     }
 
