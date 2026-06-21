@@ -292,8 +292,14 @@ export const usePositionsStore = create<PositionsState & PositionsActions>()(
       liquidateUnderwater: (markPrices) => {
         const toRemove: string[] = [];
         const newTrades: ClosedTrade[] = [];
+        const now = Date.now();
+        const GRACE_MS = 15_000; // never liquidate a position opened < 15 s ago
 
         get().positions.forEach(pos => {
+          // Grace period: stale cached prices can trigger instant liquidation
+          // before the oracle syncs after a position is opened.
+          if (now - new Date(pos.openedAt).getTime() < GRACE_MS) return;
+
           const mp = markPrices[pos.skinId] ?? pos.markPrice;
           if (!isLiquidatable(pos.side, pos.size, pos.entryPrice, mp, pos.margin)) return;
 
