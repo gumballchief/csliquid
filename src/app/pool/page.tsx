@@ -231,6 +231,41 @@ export default function PoolPage() {
     }
   }, [lpPos, cooldownRemaining, connected, publicKey, wallet, connection, getSigner, refreshBalances]);
 
+  // Claim only the fee-appreciation portion of LP without touching the principal.
+  // Fees are embedded in share price: fee% = 1 - 1/sharePrice when sharePrice > 1.
+  const feesLpTokens = useMemo((): BN => {
+    if (!lpPos || !pool || pool.sharePrice <= 1.001) return new BN(0);
+    const feeFraction = 1 - 1 / pool.sharePrice;
+    const raw = Math.floor(lpPos.lpTokens * feeFraction * 1_000_000);
+    return new BN(Math.max(0, raw));
+  }, [lpPos, pool]);
+
+  const handleClaimFees = useCallback(async () => {
+    if (feesLpTokens.isZero()) return;
+    if (cooldownRemaining > 0) {
+      setTxStatus(`Cooldown active — ${cooldownRemaining}h remaining`);
+      setTimeout(() => setTxStatus(null), 4000);
+      return;
+    }
+    setTxStatus('Claiming fees…');
+    try {
+      if (connected && publicKey && wallet?.adapter) {
+        const prog = getProgram(connection, walletCtx);
+        await sendRemoveLiquidity(prog, publicKey, feesLpTokens);
+      } else {
+        const signer = getSigner();
+        if (!signer) throw new Error('No session keypair');
+        await sendRemoveLiquidityKeypair(connection, signer, feesLpTokens);
+      }
+      setTxStatus('Fees claimed!');
+      await refreshBalances();
+    } catch (e) {
+      setTxStatus((e as Error).message.slice(0, 80));
+    } finally {
+      setTimeout(() => setTxStatus(null), 5000);
+    }
+  }, [feesLpTokens, cooldownRemaining, connected, publicKey, wallet, connection, getSigner, refreshBalances]);
+
   const tvl    = pool ? fmtUSD(pool.totalUsdc)  : '—';
   const fees   = pool ? fmtUSD(pool.feesEarned) : '—';
   const apr    = pool ? `${pool.apr7d.toFixed(1)}%` : '—';
@@ -242,6 +277,11 @@ export default function PoolPage() {
   const walletDisplay  = walletUsdc !== null ? fmtUSD(walletUsdc) : signerPubkey ? '…' : '$0.00';
   const lpValueDisplay = userLpValue > 0 ? fmtUSD(userLpValue) : lpPos !== null ? '$0.00' : '—';
   const shareDisplay   = userSharePct > 0 ? `${userSharePct.toFixed(4)}%` : '0.00%';
+  const estimatedFees  = lpPos && pool && pool.sharePrice > 1.001
+    ? lpPos.lpTokens * (pool.sharePrice - 1)
+    : 0;
+  const feesDisplay    = estimatedFees > 0.001 ? fmtUSD(estimatedFees) : '$0.00';
+  const hasClaimableFees = !feesLpTokens.isZero();
 
   return (
     <main className="min-h-screen bg-tx-bg px-4 py-6 sm:px-6 lg:px-8">
@@ -429,22 +469,33 @@ export default function PoolPage() {
               </div>
             </Card>
 
-            {/* Claim Fees (= withdraw all LP) */}
+            {/* Claim Fees — redeems only the appreciation portion, LP principal stays */}
             <Card title="Claim Fees">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-mono text-tx-muted">Your LP value</span>
-                  <span className="text-[11px] font-mono font-bold text-tx-green tabular-nums">{lpValueDisplay}</span>
+                  <span className="text-[11px] font-mono text-tx-muted">Estimated Fees</span>
+                  <span className="text-[11px] font-mono font-bold text-tx-green tabular-nums">{feesDisplay}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono text-tx-muted">LP Principal</span>
+                  <span className="text-[11px] font-mono font-bold text-tx-text tabular-nums">{lpValueDisplay}</span>
                 </div>
                 <p className="text-[10px] font-mono text-tx-dim leading-relaxed">
-                  Fees accumulate in the share price. Withdrawing your LP redeems all earnings.
+                  Fees are earned as share-price appreciation. Claim redeems only the fee component — your LP principal remains deposited.
                 </p>
+                <button
+                  onClick={handleClaimFees}
+                  disabled={!hasClaimableFees || cooldownRemaining > 0}
+                  className="w-full py-2.5 rounded-sm text-[11px] font-mono font-bold uppercase tracking-wider border border-tx-green text-tx-green hover:bg-tx-green/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+                >
+                  Claim Fees
+                </button>
                 <button
                   onClick={handleClaimAll}
                   disabled={!lpPos || lpPos.lpTokens <= 0 || cooldownRemaining > 0}
-                  className="w-full py-2.5 rounded-sm text-[11px] font-mono font-bold uppercase tracking-wider border border-tx-green text-tx-green hover:bg-tx-green/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+                  className="w-full py-2.5 rounded-sm text-[11px] font-mono font-bold uppercase tracking-wider bg-tx-bg border border-tx-border text-tx-muted hover:border-tx-border2 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
                 >
-                  Withdraw All + Claim Fees
+                  Withdraw All LP
                 </button>
               </div>
             </Card>

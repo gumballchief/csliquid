@@ -11,8 +11,8 @@ import { useOnChainPrices } from '@/hooks/useOnChainPrices';
 const POLL_INTERVAL_MS = 8_000;
 const TICK_INTERVAL_MS = 1_000;
 const TICK_NOISE       = 0.00025;
-// Max oracle price change per 30-second update cycle (dampens violent swings).
-const MAX_PRICE_CHANGE = 0.05;
+// Max oracle price change per update cycle — clamped to ±1% to prevent violent jumps.
+const MAX_PRICE_CHANGE = 0.01;
 
 export interface UseSkinPriceResult extends SkinPriceData {
   loading:     boolean;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
@@ -27,6 +27,20 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, hydrated, user, logout } = useAuth();
   const { connected } = useWallet();
   const prevConnectedRef = useRef(false);
+
+  // Register wallet address in Postgres so all wallets appear in leaderboard.
+  const registerWallet = useCallback((address: string) => {
+    fetch('/api/wallets/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address }),
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!user || !('address' in user)) return;
+    registerWallet((user as { address: string }).address);
+  }, [user, registerWallet]);
 
   // When Phantom goes connected → disconnected, clear wallet-type auth so
   // the three-option screen shows rather than leaving the user in a broken state.

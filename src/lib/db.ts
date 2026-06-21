@@ -23,6 +23,13 @@ export async function initDb(): Promise<void> {
       closed_at     TIMESTAMPTZ
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS wallets (
+      address    VARCHAR(64)  PRIMARY KEY,
+      first_seen TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+      last_seen  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    )
+  `;
 }
 
 export interface TradeRecord {
@@ -118,17 +125,25 @@ export const db = {
     return result.rows as TradeRecord[];
   },
 
+  async upsertWallet(address: string): Promise<void> {
+    await sql`
+      INSERT INTO wallets (address)
+      VALUES (${address})
+      ON CONFLICT (address) DO UPDATE SET last_seen = NOW()
+    `;
+  },
+
   async getLeaderboard(limit = 50): Promise<LeaderboardEntry[]> {
     const result = await sql`
       SELECT
-        wallet,
-        COUNT(*)::int                                            AS trades,
-        SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END)::int AS wins,
-        SUM(notional)                                           AS volume,
-        SUM(realized_pnl)                                       AS total_pnl
-      FROM positions
-      WHERE status = 'closed'
-      GROUP BY wallet
+        w.address                                                         AS wallet,
+        COUNT(p.id)::int                                                  AS trades,
+        COALESCE(SUM(CASE WHEN p.realized_pnl > 0 THEN 1 ELSE 0 END), 0)::int AS wins,
+        COALESCE(SUM(p.notional), 0)                                      AS volume,
+        COALESCE(SUM(p.realized_pnl), 0)                                  AS total_pnl
+      FROM wallets w
+      LEFT JOIN positions p ON p.wallet = w.address AND p.status = 'closed'
+      GROUP BY w.address
       ORDER BY total_pnl DESC
       LIMIT ${limit}
     `;
