@@ -11,6 +11,7 @@ import PriceTicker from '@/components/layout/PriceTicker';
 import TxToastContainer from '@/components/ui/TxToast';
 import AirdropSyncer from '@/components/ui/AirdropSyncer';
 import TosModal from '@/components/TosModal';
+import PageErrorBoundary from '@/components/ui/PageErrorBoundary';
 
 // ssr:false keeps wallet adapter constructors (window.solana etc) out of SSR
 const WalletContextProvider = dynamic(
@@ -45,7 +46,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   // Authenticated — render the full app.
   return (
-    <>
+    <PageErrorBoundary>
       <AirdropSyncer />
       <TosModal />
       <PriceTicker />
@@ -54,7 +55,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </AuthGuard>
       <TxToastContainer />
-    </>
+    </PageErrorBoundary>
   );
 }
 

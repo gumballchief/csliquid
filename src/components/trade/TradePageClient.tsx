@@ -13,9 +13,10 @@ interface Props {
   skinName:  string;
   skinTitle: string;
   skin:      Skin;
+  isDemo?:   boolean;
 }
 
-export default function TradePageClient({ skinId, skinName, skinTitle, skin }: Props) {
+export default function TradePageClient({ skinId, skinName, skinTitle, skin, isDemo }: Props) {
   const [chartPos, setChartPos] = useState<ChartPosition | null>(null);
 
   return (
@@ -27,6 +28,7 @@ export default function TradePageClient({ skinId, skinName, skinTitle, skin }: P
           skinId={skinId}
           skin={skin}
           skinName={skinTitle}
+          isDemo={isDemo}
           markPrice={0}
           onPositionChange={setChartPos}
         />

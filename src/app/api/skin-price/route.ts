@@ -116,7 +116,8 @@ export async function GET(req: NextRequest) {
   const hashName = getHashName(skinId);
 
   if (!hashName) {
-    return NextResponse.json({ error: `Unknown skin ID: ${skinId}` }, { status: 400 });
+    // Don't reflect raw user input in error message to prevent response injection
+    return NextResponse.json({ error: 'Unknown skin ID' }, { status: 400 });
   }
 
   // Check fresh server-side cache first

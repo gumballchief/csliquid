@@ -121,6 +121,18 @@ export default function RewardsPage() {
       .catch(() => {});
   }, []);
 
+  // Check on mount whether wallet has already rolled today (persisted in KV)
+  useEffect(() => {
+    if (!wallet) return;
+    fetch(`/api/rewards/roll-status?wallet=${encodeURIComponent(wallet)}`)
+      .then(r => r.json())
+      .then((data: { alreadyRolled: boolean; streak: number }) => {
+        if (data.alreadyRolled) setAlreadyRolled(true);
+        if (data.streak > 0) setStreak(data.streak);
+      })
+      .catch(() => {});
+  }, [wallet]);
+
   const handleRoll = useCallback(async () => {
     if (!wallet || rolling) return;
     setRolling(true);

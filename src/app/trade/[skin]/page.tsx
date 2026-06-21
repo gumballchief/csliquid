@@ -60,6 +60,7 @@ export default function TradePage({ params }: Props) {
         skinName={market.name}
         skinTitle={market.shortName}
         skin={skin}
+        isDemo={!market.onChain}
       />
 
       <OpenPositionsTable />

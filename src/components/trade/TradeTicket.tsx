@@ -97,6 +97,7 @@ interface Props {
   skinName:           string;
   markPrice:          number;
   onPositionChange?:  (pos: ChartPosition | null) => void;
+  isDemo?:            boolean;
 }
 
 type OrderType = 'market' | 'limit' | 'stop';
@@ -111,7 +112,7 @@ function fmtPrice(n: number) {
 const inputCls = 'w-full bg-tx-bg border border-tx-border2 rounded-sm pl-5 pr-3 py-2 text-[12px] text-tx-text placeholder-tx-dim font-mono tabular-nums focus:outline-none focus:border-tx-muted transition-colors';
 const labelCls = 'text-[10px] font-mono uppercase tracking-[0.08em] text-tx-dim';
 
-export default function TradeTicket({ skinId, skin, skinName, markPrice: staticPrice, onPositionChange }: Props) {
+export default function TradeTicket({ skinId, skin, skinName, markPrice: staticPrice, onPositionChange, isDemo }: Props) {
   const { markPrice: livePrice } = useMarketPrice(skinId);
   const markPrice = livePrice > 0 ? livePrice : staticPrice;
   const { connected, publicKey } = useWallet();
@@ -826,6 +827,11 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
                 >
                   → Go to Portfolio
                 </Link>
+              </div>
+            ) : isDemo ? (
+              <div className="w-full py-3 rounded-sm bg-yellow-500/10 border border-yellow-500/30 text-center">
+                <p className="text-yellow-400 text-[10px] font-mono uppercase tracking-wider font-bold">⚠ Demo Market</p>
+                <p className="text-[9px] font-mono text-tx-muted mt-0.5">On-chain trading launching soon</p>
               </div>
             ) : hasUsdc ? (
               <button
