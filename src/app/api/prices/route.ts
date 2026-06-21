@@ -12,9 +12,12 @@ export type { BulkIndexPrices };
 export const dynamic     = 'force-dynamic';
 export const maxDuration = 10;
 
-const SNAPSHOT_TTL_SEC = 90_000;
-const FETCH_TIMEOUT_MS = 5_000;
-const CACHE_TTL        = 30_000;
+const SNAPSHOT_TTL_SEC  = 90_000;
+const FETCH_TIMEOUT_MS  = 5_000;
+const CACHE_TTL         = 30_000;
+// KV key for persisting the CS500 EWMA baseline across serverless cold starts.
+const CS500_EWMA_KV_KEY = 'cs500_ewma_baseline';
+const CS500_EWMA_TTL    = 3_600; // 1 hour
 
 // ── Constituent skin lists derived from INDEX_DEFINITIONS ─────────────────────
 
@@ -27,8 +30,11 @@ const INDEX_SKINS: Record<string, string[]> = {
   'glove-index': INDEX_DEFINITIONS['glove-index'].constituents.map(c => c.hashName),
 };
 
-// CS500 = every skin from all 4 base indices (40 total, deduped)
-const CS500_SKINS = Array.from(new Set(BASE_IDS.flatMap(id => INDEX_SKINS[id])));
+// CS500: 25 flagship skins spanning all price tiers (matches oracle/src/indexes.ts)
+const CS500_SKINS = INDEX_DEFINITIONS['cs500-index'].constituents.map(c => c.hashName);
+
+// Fixed divisor: index = sum(midpoints) / divisor.  Matches services/oracle/src/indexes.ts.
+const CS500_DIVISOR = 3.5;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -114,6 +120,33 @@ function avgMidpoint(results: SkinResult[]): number {
   return pts.reduce((a, b) => a + b, 0) / pts.length;
 }
 
+/** CS500: sum of constituent midpoints / fixed divisor (DJIA-style price index).
+ *  Scales the divisor by the fraction of skins that successfully fetched so that
+ *  Steam rate-limit failures don't artificially crash the index value.
+ */
+function cs500Midpoint(results: SkinResult[], divisor: number): number {
+  const pts = results.filter(r => r.midpoint > 0);
+  if (pts.length === 0) return 0;
+  const sum = pts.reduce((a, r) => a + r.midpoint, 0);
+  // Scale divisor proportionally: if only 10/25 skins fetched, divisor × (10/25)
+  // keeps the index stable regardless of how many Steam calls succeed.
+  const scaledDivisor = divisor * (pts.length / results.length);
+  return sum / scaledDivisor;
+}
+
+/**
+ * Apply ±3% per-cycle clamp then EWMA α=0.05 to smooth CS500.
+ * Returns `fresh` when there is no previous price to blend against.
+ */
+function smoothCs500(fresh: number, prev: number): number {
+  if (fresh <= 0) return prev;
+  if (prev <= 0)  return fresh;
+  const lo      = prev * 0.97;
+  const hi      = prev * 1.03;
+  const clamped = Math.min(Math.max(fresh, lo), hi);
+  return prev * 0.95 + clamped * 0.05;
+}
+
 // ── Audit log ─────────────────────────────────────────────────────────────────
 
 const PAD = 46;
@@ -131,7 +164,7 @@ function printAudit(label: string, results: SkinResult[], finalPrice: number, st
   }
   const ok = results.filter(r => r.midpoint > 0).length;
   if (finalPrice > 0) {
-    console.log(`${tag}   → $${finalPrice.toFixed(2)}  avg-midpoint  (${ok}/${results.length} skins)${stale ? '  ← stale cache' : ''}`);
+    console.log(`${tag}   → $${finalPrice.toFixed(2)}  (${ok}/${results.length} skins)${stale ? '  ← stale cache' : ''}`);
   } else {
     console.log(`${tag}   → UNAVAILABLE  (0/${results.length} skins, no cache)`);
   }
@@ -162,6 +195,19 @@ export async function GET() {
   try {
     console.log(`\n[PRICES] ══════════  AUDIT  ${new Date().toISOString()}  ══════════`);
 
+    // On cold start (no in-memory cache), load the persisted CS500 EWMA baseline from KV
+    // so smoothCs500 doesn't jump directly to raw Steam value.
+    let prevCs500 = cached?.cs500 ?? 0;
+    if (prevCs500 <= 0) {
+      try {
+        const kvBaseline = await kv.get<number>(CS500_EWMA_KV_KEY);
+        if (kvBaseline && kvBaseline > 0) {
+          prevCs500 = kvBaseline;
+          console.log(`[PRICES] CS500 cold-start: loaded KV baseline $${prevCs500.toFixed(2)}`);
+        }
+      } catch { /* KV unavailable — continue without baseline */ }
+    }
+
     // Fetch all 40 unique skins in a single parallel batch
     const allResults = await Promise.all(CS500_SKINS.map(fetchSteamPrice));
 
@@ -182,14 +228,15 @@ export async function GET() {
     const ak47Fresh  = avgMidpoint(ak47Results);
     const knifeFresh = avgMidpoint(knifeResults);
     const gloveFresh = avgMidpoint(gloveResults);
-    const cs500Fresh = avgMidpoint(cs500Results);
+    // CS500: sum / scaled divisor (partial-fetch-safe), then EWMA-smoothed
+    const cs500Fresh = cs500Midpoint(cs500Results, CS500_DIVISOR);
 
     const prev = cached;
     const awp   = awpFresh   > 0 ? awpFresh   : (prev?.awp   ?? 0);
     const ak47  = ak47Fresh  > 0 ? ak47Fresh  : (prev?.ak47  ?? 0);
     const knife = knifeFresh > 0 ? knifeFresh : (prev?.knife ?? 0);
     const glove = gloveFresh > 0 ? gloveFresh : (prev?.glove ?? 0);
-    const cs500 = cs500Fresh > 0 ? cs500Fresh : (prev?.cs500 ?? 0);
+    const cs500 = smoothCs500(cs500Fresh, prevCs500);
 
     printAudit('AWP',   awpResults,   awp,   awpFresh   === 0 && !!prev?.awp);
     printAudit('AK47',  ak47Results,  ak47,  ak47Fresh  === 0 && !!prev?.ak47);
@@ -208,6 +255,11 @@ export async function GET() {
         'glove-index': glove,
         'cs500-index': cs500,
       });
+      // Persist the CS500 EWMA baseline to KV so the next cold-start doesn't
+      // lose the smoothed value and jump directly to a raw Steam price.
+      if (cs500 > 0) {
+        void kv.set(CS500_EWMA_KV_KEY, cs500, { ex: CS500_EWMA_TTL }).catch(() => {});
+      }
     }
 
     return NextResponse.json(data);

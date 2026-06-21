@@ -93,6 +93,10 @@ export type OpenPositionResult =
 
 const INITIAL_BALANCE = 5_000; // USDC (devnet paper balance; mainnet will use real on-chain balance)
 
+// Per-wallet positions snapshot key. Uses a DIFFERENT prefix from the auth keypair store
+// ('cs-futures-wallet-') to prevent JSON position data from overwriting keypair bytes.
+const POS_KEY = (address: string) => `cs-futures-pos-${address}`;
+
 interface PositionsState {
   positions:    PerpsPosition[];
   tradeHistory: ClosedTrade[];
@@ -351,7 +355,7 @@ export const usePositionsStore = create<PositionsState & PositionsActions>()(
         // Save current wallet's state before switching
         if (walletKey) {
           const snapshot = JSON.stringify({ positions, tradeHistory, usdcBalance });
-          try { localStorage.setItem(`cs-futures-wallet-${walletKey}`, snapshot); } catch {}
+          try { localStorage.setItem(POS_KEY(walletKey), snapshot); } catch {}
         }
 
         if (!address) {
@@ -359,10 +363,11 @@ export const usePositionsStore = create<PositionsState & PositionsActions>()(
           return;
         }
 
-        // Check for a saved per-wallet snapshot
+        // Check for a saved per-wallet snapshot (try new key first, fall back to old colliding key)
         let loaded: { positions: PerpsPosition[]; tradeHistory: ClosedTrade[]; usdcBalance: number } | null = null;
         try {
-          const raw = localStorage.getItem(`cs-futures-wallet-${address}`);
+          const raw = localStorage.getItem(POS_KEY(address))
+            ?? localStorage.getItem(`cs-futures-wallet-${address}`);
           if (raw) loaded = JSON.parse(raw);
         } catch {}
 
@@ -396,13 +401,14 @@ export const usePositionsStore = create<PositionsState & PositionsActions>()(
 );
 
 // Auto-save active wallet's state to per-wallet key on every relevant change.
-// This runs in the browser only (localStorage is undefined in Node/SSR).
+// Uses POS_KEY (cs-futures-pos-[addr]) — NOT cs-futures-wallet-[addr] — to avoid
+// colliding with the auth keypair that AuthContext stores under the wallet- prefix.
 if (typeof window !== 'undefined') {
   usePositionsStore.subscribe((state) => {
     if (!state.walletKey) return;
     try {
       localStorage.setItem(
-        `cs-futures-wallet-${state.walletKey}`,
+        POS_KEY(state.walletKey),
         JSON.stringify({
           positions:    state.positions,
           tradeHistory: state.tradeHistory,
