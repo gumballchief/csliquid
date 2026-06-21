@@ -2,7 +2,7 @@ export type SkinRarity = 'Consumer' | 'Industrial' | 'Mil-Spec' | 'Restricted' |
 
 export type SkinWear = 'Factory New' | 'Minimal Wear' | 'Field-Tested' | 'Well-Worn' | 'Battle-Scarred';
 
-export type SkinCategory = 'Rifle' | 'Knife' | 'Pistol' | 'Index';
+export type SkinCategory = 'Rifle' | 'Knife' | 'Pistol' | 'Index' | 'Glove' | 'Case';
 
 export interface Skin {
   id: string;
