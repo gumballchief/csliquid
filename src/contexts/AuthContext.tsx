@@ -34,10 +34,17 @@ function storeKeypairDual(kp: Keypair): void {
 }
 
 // Load a keypair for a known address — tries new format first, falls back to legacy.
+// NOTE: cs-futures-wallet-[addr] may contain JSON position data (written by positionsStore)
+// rather than a keypair. We must try/catch and fall through to the legacy key in that case.
 function loadKeypairForAddress(address: string): Keypair | null {
-  const raw = localStorage.getItem(keypairKeyFor(address)) ?? localStorage.getItem(KEYPAIR_KEY);
-  if (!raw) return null;
-  try { return Keypair.fromSecretKey(decodeBase58(raw)); } catch { return null; }
+  const perAddr = localStorage.getItem(keypairKeyFor(address));
+  if (perAddr) {
+    try { return Keypair.fromSecretKey(decodeBase58(perAddr)); } catch { /* not a keypair */ }
+  }
+  // Fall back to the legacy root key
+  const legacy = localStorage.getItem(KEYPAIR_KEY);
+  if (!legacy) return null;
+  try { return Keypair.fromSecretKey(decodeBase58(legacy)); } catch { return null; }
 }
 
 // Scan all keys for any cs-futures-wallet-* entry.
@@ -76,8 +83,27 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function readUserFromStorage(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuthUser;
+    if (parsed.type === 'generated' || parsed.type === 'email') {
+      const addr = (parsed as { address: string }).address;
+      const hasKey =
+        !!localStorage.getItem(keypairKeyFor(addr)) ||
+        !!localStorage.getItem(KEYPAIR_KEY);
+      return hasKey ? parsed : null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user,     setUser]     = useState<AuthUser | null>(null);
+  const [user,     setUser]     = useState<AuthUser | null>(readUserFromStorage);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -89,13 +115,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(raw) as AuthUser;
 
         if (parsed.type === 'generated') {
-          const kp = loadKeypairForAddress(parsed.address);
+          // Try address-specific key, then any cs-futures-wallet-* key, then legacy key.
+          const kp = loadKeypairForAddress(parsed.address) ?? scanForKeypair() ?? (keypairB58 ? tryLoadB58(keypairB58) : null);
           if (!kp) {
             // Keypair was cleared — show auth screen.
             localStorage.removeItem(STORAGE_KEY);
           } else {
-            ensureNewKeyFormat(kp);
-            setUser(parsed);
+            storeKeypairDual(kp);
+            const restored: AuthUser = { type: 'generated', address: kp.publicKey.toBase58() };
+            setUser(restored);
+            if (restored.address !== parsed.address) {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(restored));
+            }
           }
 
         } else if (parsed.type === 'email') {
@@ -174,8 +205,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(keypairKeyFor((user as { address: string }).address));
     }
     localStorage.removeItem(KEYPAIR_KEY);
+    // Remove keypair keys (cs-futures-wallet-*) and position snapshot keys (cs-futures-pos-*)
     Object.keys(localStorage)
-      .filter(k => k.startsWith(KEYPAIR_PREFIX))
+      .filter(k => k.startsWith(KEYPAIR_PREFIX) || k.startsWith('cs-futures-pos-'))
       .forEach(k => localStorage.removeItem(k));
     // Clear auth — user will see AuthScreen again. No auto-generation.
     persist(null);

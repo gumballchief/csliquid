@@ -37,7 +37,7 @@ export const FALLBACK_PRICES: Record<string, number> = {
   'ak47-index':   12,
   'knife-index': 480,
   'glove-index': 280,
-  'cs500-index':  65,
+  'cs500-index':  420,  // ~sum of 25 constituents / 3.5 divisor at mid-2025 prices
 };
 
 // ── Singleton cache ────────────────────────────────────────────────────────────
