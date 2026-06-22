@@ -7,10 +7,10 @@ import { PriceRange, PriceHistories } from '@/services/skinPriceService';
 type Range = PriceRange;
 
 const RANGES: { id: Range; hours: number; count: number; label: string }[] = [
-  { id: '1H', hours: 1 / 60, count: 120, label: '1H' },  // 1-min candles  → 2 h of detail
-  { id: '4H', hours: 5 / 60, count: 288, label: '4H' },  // 5-min candles  → 24 h
-  { id: '1D', hours: 0.5,    count: 336, label: '1D' },  // 30-min candles → 7 days
-  { id: '1W', hours: 4,      count: 720, label: '1W' },  // 4-hr candles   → ~4 months
+  { id: '1H', hours: 1 / 60, count: 480, label: '1H' },  // 1-min candles → 8 h
+  { id: '4H', hours: 5 / 60, count: 360, label: '4H' },  // 5-min candles → 30 h
+  { id: '1D', hours: 2,      count: 240, label: '1D' },  // 2-hr candles  → 20 days
+  { id: '1W', hours: 24,     count: 120, label: '1W' },  // daily candles → 4 months
 ];
 
 export interface ChartPosition {
