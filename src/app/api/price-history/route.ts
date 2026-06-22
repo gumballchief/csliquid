@@ -58,17 +58,20 @@ async function ensureSeed(skinId: string, currentPrice: number): Promise<void> {
   // Check if existing seed is stale (price diverged >30% from current)
   const count = await db.countPriceSnapshots(skinId);
   if (count >= 200) {
-    const recent = await sql`
+    // Check the OLDEST row — real snapshots keep the recent rows near current
+    // price, so checking most-recent always shows 0% divergence even when 90
+    // days of seeded data is anchored to a stale price.
+    const oldest = await sql`
       SELECT price FROM price_history
       WHERE skin_id = ${skinId}
-      ORDER BY recorded_at DESC LIMIT 1
+      ORDER BY recorded_at ASC LIMIT 1
     `;
-    const lastPrice = Number(recent.rows[0]?.price ?? 0);
-    if (lastPrice > 0) {
-      const divergence = Math.abs(currentPrice - lastPrice) / lastPrice;
-      if (divergence < 0.30) return; // seed is still close enough
+    const seedBasePrice = Number(oldest.rows[0]?.price ?? 0);
+    if (seedBasePrice > 0) {
+      const divergence = Math.abs(currentPrice - seedBasePrice) / seedBasePrice;
+      if (divergence < 0.30) return; // historical baseline still close enough
     }
-    // Price moved >30% — delete stale seed and reseed from current price
+    // Baseline drifted >30% — wipe stale seed and rebuild from current price
     await sql`DELETE FROM price_history WHERE skin_id = ${skinId}`;
   }
 
