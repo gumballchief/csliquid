@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, db as pgPool } from '@vercel/postgres';
+import { sql, createClient } from '@vercel/postgres';
 import { initDb, db } from '@/lib/db';
 
 export interface OHLCCandle { time: number; open: number; high: number; low: number; close: number }
@@ -54,7 +54,7 @@ function seedSnapshots(currentPrice: number, count: number, intervalSec: number)
   const pts: { price: number; ts: number }[] = [];
   for (let i = 0; i < count; i++) {
     pts.push({ price: p, ts: now - i * intervalSec });
-    p = Math.max(p * (1 + (rand() - 0.5) * 0.022), 0.01);
+    p = Math.max(p * (1 + (rand() - 0.5) * 0.006), 0.01);
   }
   return pts.reverse(); // oldest first; newest === currentPrice
 }
@@ -68,14 +68,15 @@ async function bulkInsert(rows: { skinId: string; price: number; ts: number }[])
     placeholders.push(`($${b + 1}, $${b + 2}, $${b + 3})`);
     params.push(rows[i].skinId, rows[i].price, new Date(rows[i].ts * 1000).toISOString());
   }
-  const client = await pgPool.connect();
+  const client = createClient();
+  await client.connect();
   try {
     await client.query(
       `INSERT INTO price_history (skin_id, price, recorded_at) VALUES ${placeholders.join(',')}`,
       params,
     );
   } finally {
-    client.release();
+    await client.end();
   }
 }
 
