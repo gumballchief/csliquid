@@ -273,12 +273,6 @@ export default function RewardsPage() {
                 {rolling ? 'Rolling…' : alreadyRolled ? 'Rolled Today ✓' : !wallet ? 'Connect Wallet First' : 'Roll Case →'}
               </button>
 
-              {/* Eligibility hint */}
-              {wallet && !alreadyRolled && !rolling && !result && (
-                <p style={{ color: DIM }} className="text-[9px] font-mono text-center">
-                  Open at least one trade to unlock your roll
-                </p>
-              )}
             </div>
 
             {/* Result */}

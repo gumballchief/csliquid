@@ -34,7 +34,7 @@ function buildOHLC(
   // Add deterministic ±1.5% spread so candles render with real bodies.
   let seed = 12345;
   const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0x100000000; };
-  for (const c of map.values()) {
+  for (const c of Array.from(map.values())) {
     if (c.high === c.low) {
       const spread = c.close * 0.015;
       c.high = c.close + spread;
