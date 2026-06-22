@@ -23,7 +23,7 @@ export default function LiveSkinCard({ market }: { market: FuturesMarket }) {
   }, [live.markPrice]);
 
   // Build 7-point sparkline from live 1D OHLC history, fall back to mock
-  const liveHistory = live.histories['1D'];
+  const liveHistory = live.histories['1d'];
   const priceHistory =
     liveHistory?.length >= 2
       ? liveHistory.slice(-7).map(c => c.close)
