@@ -63,7 +63,7 @@ const snapshots     = new Map<string, Snapshot[]>();
 const historyAnchor = new Map<string, PriceHistories>();
 const mockPrices    = new Map<string, number>();
 
-// Real OHLC history cache (30s TTL — short enough to reflect a reseed quickly)
+// Real OHLC history cache (30s TTL)
 const realHistoryCache = new Map<string, { histories: PriceHistories; ts: number }>();
 const HISTORY_CACHE_TTL = 30_000;
 
@@ -78,19 +78,6 @@ async function fetchRealHistories(skinId: string, currentPrice?: number): Promis
     if (data.empty || data.error) return null;
     if (!data['1H'] || !data['4H'] || !data['1D'] || !data['1W']) return null;
     if (Object.values(data).every(v => Array.isArray(v) && v.length === 0)) return null;
-
-    // Cliff guard: if the most recent 1H candle is >15% away from the live
-    // price, the DB seed is stale. Ditch it and let the caller use generated
-    // candles anchored to the current price instead. The server's ensureSeed
-    // will rebuild the DB in the background.
-    if (currentPrice && currentPrice > 0) {
-      const last1H = data['1H'].at(-1);
-      if (last1H) {
-        const drift = Math.abs(last1H.close - currentPrice) / currentPrice;
-        if (drift > 0.15) return null;
-      }
-    }
-
     realHistoryCache.set(skinId, { histories: data as PriceHistories, ts: Date.now() });
     return data as PriceHistories;
   } catch {
