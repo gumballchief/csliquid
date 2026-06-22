@@ -1,11 +1,15 @@
 import { sql } from '@vercel/postgres';
 
 export async function initDb(): Promise<void> {
+  // Widen market column if it was created as VARCHAR(20) — safe no-op if already wider
+  await sql`
+    ALTER TABLE positions ALTER COLUMN market TYPE VARCHAR(60)
+  `.catch(() => {});
   await sql`
     CREATE TABLE IF NOT EXISTS positions (
       id            SERIAL PRIMARY KEY,
       wallet        VARCHAR(64)   NOT NULL,
-      market        VARCHAR(20)   NOT NULL,
+      market        VARCHAR(60)   NOT NULL,
       direction     VARCHAR(5)    NOT NULL,
       size          DECIMAL(20,6) NOT NULL,
       collateral    DECIMAL(20,6) NOT NULL,
