@@ -5,7 +5,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey } from '@solana/web3.js';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToastStore } from '@/store/toastStore';
-import { fetchUserAccountBalance, sendDepositKeypair } from '@/lib/program';
+import { fetchUserAccountBalance, sendDepositKeypair, sendDeposit, getProgram } from '@/lib/program';
 import { decodeBase58 } from '@/lib/base58';
 
 const SOL_LOW_THRESHOLD = 5_000_000; // 0.005 SOL — re-seed if wallet drops below this
@@ -19,7 +19,8 @@ const SOL_LOW_THRESHOLD = 5_000_000; // 0.005 SOL — re-seed if wallet drops be
  *  3. Shows a welcome info toast with the tx link
  */
 export default function AirdropSyncer() {
-  const { connected, publicKey } = useWallet();
+  const wallet = useWallet();
+  const { connected, publicKey } = wallet;
   const { connection }           = useConnection();
   const { user, hydrated }       = useAuth();
   const addInfo                  = useToastStore((s) => s.addInfo);
@@ -123,8 +124,20 @@ export default function AirdropSyncer() {
           }
         }
 
-        // Phantom / external wallet — USDC lands in ATA; user deposits via UI
-        addInfo('$10,000 USDC airdropped! Deposit it on the trade page to start trading.', data.tx);
+        // Phantom / external wallet — auto-deposit using wallet adapter signing
+        // Brief pause so the airdrop tx is fully propagated
+        await new Promise<void>(r => setTimeout(r, 2_500));
+        if (cancelled) return;
+
+        try {
+          const program = getProgram(connection, wallet as never);
+          const depositSig = await sendDeposit(program, publicKey!, 10_000);
+          console.log('[AirdropSyncer] phantom auto-deposit succeeded, tx:', depositSig);
+          addInfo('Welcome to CSLIQUID! $10,000 USDC is ready to trade.', data.tx);
+        } catch (depositErr) {
+          console.error('[AirdropSyncer] phantom auto-deposit failed:', depositErr);
+          addInfo('$10,000 USDC airdropped! Deposit it on the trade page to start trading.', data.tx);
+        }
       } catch (err) {
         console.error('[AirdropSyncer] unexpected error:', err);
       }
