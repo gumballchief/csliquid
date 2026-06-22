@@ -55,11 +55,24 @@ export function generateCandles(
     const open  = price;
     const close = Math.max(open + move, open * 0.90);
     const body  = Math.abs(close - open);
-    const high  = Math.max(open, close) + body * (0.3 + rand() * 1.0);
-    const low   = Math.min(open, close) - body * (0.3 + rand() * 1.0);
+    const high  = Math.max(open, close) + body * (0.2 + rand() * 0.9);
+    const low   = Math.min(open, close) - body * (0.2 + rand() * 0.9);
 
     candles.push({ time, open, high, low, close });
     price = close;
+  }
+
+  // Last candle: add a small rejection wick in the opposite direction of the move
+  const last = candles[candles.length - 1];
+  if (last) {
+    const rejectionWick = last.close * 0.003;
+    if (last.close >= last.open) {
+      // Green candle — small upper wick showing it went up then pulled back
+      last.high = Math.max(last.high, last.close + rejectionWick);
+    } else {
+      // Red candle — small lower wick showing it went down then bounced
+      last.low = Math.min(last.low, last.close - rejectionWick);
+    }
   }
 
   return candles;
