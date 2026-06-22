@@ -31,11 +31,21 @@ export default function SkinCard({ market }: Props) {
 
         {/* ── Header row ── */}
         <div className="px-3 pt-3 pb-2.5 flex items-start justify-between border-b border-tx-border">
-          <div className="min-w-0 pr-2">
-            <p className="text-[11px] font-mono uppercase tracking-[0.06em] text-tx-green leading-none">
-              {skin.weapon}{isIndex ? ' · INDEX' : ''}
-            </p>
-            <p className="text-[11px] text-tx-muted font-mono mt-1 truncate">{skinTitle}</p>
+          <div className="flex items-center gap-2 min-w-0 pr-2">
+            {skin.imageUrl && (
+              <img
+                src={skin.imageUrl}
+                alt={skin.name}
+                className="w-8 h-8 object-contain shrink-0 rounded-sm"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
+            <div className="min-w-0">
+              <p className="text-[11px] font-mono uppercase tracking-[0.06em] text-tx-green leading-none">
+                {skin.weapon}{isIndex ? ' · INDEX' : ''}
+              </p>
+              <p className="text-[11px] text-tx-muted font-mono mt-1 truncate">{skinTitle}</p>
+            </div>
           </div>
           <span className={`shrink-0 text-[10px] font-mono font-bold tabular-nums px-1.5 py-0.5 rounded-sm ${
             up

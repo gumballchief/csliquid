@@ -17,7 +17,14 @@ export default function LivePriceHeader({ skinId, skinName }: Props) {
   const { markPrice, indexPrice, change24h, changePct24h, high24h, low24h, volume24h, fundingRate, source, loading, lastUpdated } = useSkinPrice(skinId);
 
   const up = changePct24h >= 0;
-  const fmtP = (n: number) => n === 0 && loading ? '—' : `$${n >= 1000 ? n.toLocaleString(undefined, { minimumFractionDigits: 2 }) : n.toFixed(2)}`;
+  function fmtN(n: number) {
+    if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+    if (n >= 1_000_000)     return `${(n / 1_000_000).toFixed(2)}M`;
+    if (n >= 10_000)        return `${(n / 1_000).toFixed(1)}K`;
+    if (n >= 1_000)         return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return n.toFixed(2);
+  }
+  const fmtP = (n: number) => n === 0 && loading ? '—' : `$${fmtN(n)}`;
 
   return (
     <div className="px-4 py-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-tx-border bg-tx-surface">
@@ -36,7 +43,7 @@ export default function LivePriceHeader({ skinId, skinName }: Props) {
       {/* 24h change */}
       {(!loading || changePct24h !== 0) && (
         <span className={`text-[12px] font-mono tabular-nums ${up ? 'text-tx-green' : 'text-tx-red'}`}>
-          {up ? '+' : ''}{change24h.toFixed(2)} ({up ? '+' : ''}{changePct24h.toFixed(2)}%)
+          {up ? '+' : ''}${fmtN(Math.abs(change24h))} ({up ? '+' : ''}{changePct24h.toFixed(2)}%)
         </span>
       )}
 
