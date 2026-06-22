@@ -8,20 +8,8 @@ const TX_REGEX = /^[1-9A-HJ-NP-Za-km-z]{87,88}$/;
 // Valid Solana public key: 32-44 base58 chars
 const WALLET_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-const VALID_MARKETS = new Set([
-  // Index markets
-  'awp-index','ak47-index','knife-index','glove-index','cs500-index',
-  // Individual skin perps
-  'awp-dragon-lore-fn','awp-gungnir-fn','awp-medusa-fn','awp-asiimov-fn',
-  'ak47-wild-lotus-fn','ak47-gold-arabesque-fn','ak47-fire-serpent-fn','ak47-case-hardened-fn',
-  'm4a4-howl-fn','m4a4-poseidon-fn','m4a1s-golden-coil-fn',
-  'glock-fade-fn','desert-eagle-blaze-fn','usp-kill-confirmed-fn',
-  'karambit-doppler-p2-fn','karambit-fade-fn','butterfly-doppler-p1-fn',
-  'm9-bayonet-doppler-fn','sport-gloves-vice-fn','driver-gloves-king-snake-fn',
-  // Case perps
-  'dreams-nightmares-case','recoil-case','revolution-case','fracture-case',
-  'snakebite-case','chroma-2-case','gamma-case','spectrum-case','prisma-2-case','cs20-case',
-]);
+// Market ID: any alphanumeric + hyphen/underscore, 2–60 chars
+const MARKET_REGEX = /^[A-Za-z0-9_-]{2,60}$/;
 
 const VALID_DIRECTIONS = new Set(['LONG', 'SHORT']);
 
@@ -71,8 +59,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (!TX_REGEX.test(String(tx))) {
       return NextResponse.json({ error: 'Invalid transaction signature' }, { status: 400 });
     }
-    if (!VALID_MARKETS.has(String(market))) {
-      return NextResponse.json({ error: 'Unknown market' }, { status: 400 });
+    if (!MARKET_REGEX.test(String(market))) {
+      return NextResponse.json({ error: 'Invalid market' }, { status: 400 });
     }
     if (!VALID_DIRECTIONS.has(String(direction).toUpperCase())) {
       return NextResponse.json({ error: 'Invalid direction' }, { status: 400 });

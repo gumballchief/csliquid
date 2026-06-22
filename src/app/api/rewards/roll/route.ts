@@ -80,23 +80,15 @@ export async function POST(req: NextRequest) {
     }
   } catch { /* KV unavailable — allow roll */ }
 
-  // Check trade eligibility: has user ever opened any position?
-  // (Devnet: fake USDC, so any trade ever qualifies — no collateral minimum, no date gate)
-  // On DB error we grant eligibility rather than blocking users — this is devnet.
+  // Check eligibility: has the wallet ever opened a position?
+  // Grant on DB error (devnet — no real money at stake).
   let eligible = true;
   if (process.env.POSTGRES_URL) {
     try {
       const { sql } = await import('@vercel/postgres');
-      const result = await sql`
-        SELECT COUNT(*) AS cnt
-        FROM positions
-        WHERE wallet = ${wallet}
-      `;
-      const cnt = Number(result.rows[0]?.cnt ?? 0);
-      // Only block if DB is reachable AND count is definitively 0
-      eligible = cnt > 0;
+      const result = await sql`SELECT COUNT(*) AS cnt FROM positions WHERE wallet = ${wallet}`;
+      eligible = Number(result.rows[0]?.cnt ?? 0) > 0;
     } catch {
-      // DB unreachable — grant eligibility on devnet rather than blocking
       console.warn('[rewards/roll] DB check failed, granting eligibility');
       eligible = true;
     }
