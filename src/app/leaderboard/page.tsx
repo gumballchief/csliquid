@@ -147,7 +147,7 @@ export default function LeaderboardPage() {
       </div>
 
       <p className="text-[10px] font-mono text-tx-dim text-center uppercase tracking-wider">
-        Updated every 60s · Open positions only · All-time statistics
+        Updated every 30s · Closed trades · All-time statistics
       </p>
     </main>
   );
