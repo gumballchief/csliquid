@@ -30,7 +30,7 @@ export const ALL_MARKETS: MarketDefinition[] = [
     slug: 'ak47-index', ticker: 'AK47-IDX', name: 'AK-47 Index',
     shortName: 'AK-47 Index',
     type: 'index', steamHashName: null, approxPrice: 12, onChain: true,
-    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiFO0P_6afVSKP-EAm6extF6ueZhW2exwkl2tmTXwt39eCiUPQR2DMN4TOVetUK8xoLgM-K341eM2otDnC6okGoXufBz_TAB/360fx360f',
+    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiFO0POlV61-LPGdCliWzeFkse1WQyC0nQlpsDuGyt-pdnyRPA4hDcYkR-QPuhi-wdPuYbyx5AaMidkQnC_-2ilIuzErvbi4ijV5Mw/360fx360f',
   },
   {
     slug: 'knife-index', ticker: 'KNIFE-IDX', name: 'Knife Index',
@@ -48,7 +48,7 @@ export const ALL_MARKETS: MarketDefinition[] = [
     slug: 'cs500-index', ticker: 'CS500', name: 'CS500 Index',
     shortName: 'CS500 Index',
     type: 'index', steamHashName: null, approxPrice: 420, onChain: true,
-    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk4veqYaF7IfysCnWRxuF4j-B-Xxa_nBovp3Pdwtj9cC_GaAd0DZdwQu9fuhS4kNy0NePntVTbjYpCyyT_3CgY5i9j_a9cBkcCWUKV/360fx360f',
+    iconUrl: '/cs500-card.svg',
   },
 
   // ── Individual skin perps ─────────────────────────────────────────────────
