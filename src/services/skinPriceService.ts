@@ -67,22 +67,8 @@ const mockPrices    = new Map<string, number>();
 const realHistoryCache = new Map<string, { histories: PriceHistories; ts: number }>();
 const HISTORY_CACHE_TTL = 30_000;
 
-async function fetchRealHistories(skinId: string, currentPrice?: number): Promise<PriceHistories | null> {
-  const hit = realHistoryCache.get(skinId);
-  if (hit && Date.now() - hit.ts < HISTORY_CACHE_TTL) return hit.histories;
-  try {
-    const priceQ = currentPrice && currentPrice > 0 ? `&price=${currentPrice}` : '';
-    const res = await fetch(`/api/price-history?skinId=${encodeURIComponent(skinId)}${priceQ}`);
-    if (!res.ok) return null;
-    const data = await res.json() as PriceHistories & { empty?: boolean; error?: string };
-    if (data.empty || data.error) return null;
-    if (!data['1H'] || !data['4H'] || !data['1D'] || !data['1W']) return null;
-    if (Object.values(data).every(v => Array.isArray(v) && v.length === 0)) return null;
-    realHistoryCache.set(skinId, { histories: data as PriceHistories, ts: Date.now() });
-    return data as PriceHistories;
-  } catch {
-    return null;
-  }
+async function fetchRealHistories(_skinId: string, _currentPrice?: number): Promise<PriceHistories | null> {
+  return null;
 }
 
 // ── Bulk index price cache (one fetch updates all 4 indexes) ──────────────
