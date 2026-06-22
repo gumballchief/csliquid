@@ -53,15 +53,18 @@ function fireRecordOpen(data: {
   }).catch(() => {});
 }
 
-function fireRecordClose(data: {
-  wallet: string; market: string; close_tx: string;
-  exit_price: number; entry_price: number; realized_pnl: number;
-  direction: string; size: number; leverage: number;
-}): void {
+function fireRecordClose(data: Record<string, unknown>): void {
   fetch('/api/trades/record-close', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }).catch(() => {});
+  }).then(async res => {
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('[record-close] failed:', res.status, err);
+    } else {
+      console.log('[record-close] ok', data.market);
+    }
+  }).catch(e => console.error('[record-close] network error:', e));
 }
 
 // Reads the referrer cookie set by /ref/[username] and pings /api/referral/track.
