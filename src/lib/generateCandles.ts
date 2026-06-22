@@ -55,11 +55,8 @@ export function generateCandles(
     const open  = price;
     const close = Math.max(open + move, open * 0.90);
     const body  = Math.abs(close - open);
-    // Wicks: price-based floor ensures both tails are always visible,
-    // even when the body is small. Upper and lower wicks are independent.
-    const minWick = price * 0.004;
-    const high  = Math.max(open, close) + Math.max(body * (0.3 + rand() * 0.8), minWick);
-    const low   = Math.min(open, close) - Math.max(body * (0.3 + rand() * 0.8), minWick);
+    const high  = Math.max(open, close) + body * (0.3 + rand() * 1.0);
+    const low   = Math.min(open, close) - body * (0.3 + rand() * 1.0);
 
     candles.push({ time, open, high, low, close });
     price = close;
