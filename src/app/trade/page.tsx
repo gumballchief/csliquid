@@ -113,7 +113,7 @@ function MarketCard({ market }: { market: MarketDefinition }) {
         {market.iconUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={`/api/img?url=${encodeURIComponent(market.iconUrl)}`}
+            src={market.iconUrl.startsWith('/') ? market.iconUrl : `/api/img?url=${encodeURIComponent(market.iconUrl)}`}
             alt={market.shortName}
             className="absolute inset-0 w-full h-full object-cover"
             onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
