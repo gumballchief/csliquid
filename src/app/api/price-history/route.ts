@@ -54,19 +54,35 @@ function seedSnapshots(currentPrice: number, count: number, intervalSec: number)
 
 async function ensureSeed(skinId: string, currentPrice: number): Promise<void> {
   if (!currentPrice || currentPrice <= 0) return;
+
+  // Check if existing seed is stale (price diverged >30% from current)
   const count = await db.countPriceSnapshots(skinId);
-  if (count >= 200) return;
+  if (count >= 200) {
+    const recent = await sql`
+      SELECT price FROM price_history
+      WHERE skin_id = ${skinId}
+      ORDER BY recorded_at DESC LIMIT 1
+    `;
+    const lastPrice = Number(recent.rows[0]?.price ?? 0);
+    if (lastPrice > 0) {
+      const divergence = Math.abs(currentPrice - lastPrice) / lastPrice;
+      if (divergence < 0.30) return; // seed is still close enough
+    }
+    // Price moved >30% — delete stale seed and reseed from current price
+    await sql`DELETE FROM price_history WHERE skin_id = ${skinId}`;
+  }
 
   // Generate 2160 points at 1-hour intervals = ~90 days
   const pts = seedSnapshots(currentPrice, 2160, 3600);
 
-  // Batch insert 200 at a time using individual sql calls in a loop
-  for (const pt of pts) {
-    await sql`
-      INSERT INTO price_history (skin_id, price, recorded_at)
-      VALUES (${skinId}, ${pt.price}, ${new Date(pt.ts * 1000).toISOString()})
-    `;
-  }
+  // Bulk insert via UNNEST — single query instead of 2160 round-trips
+  const prices     = pts.map(p => p.price);
+  const timestamps = pts.map(p => new Date(p.ts * 1000).toISOString());
+  await sql`
+    INSERT INTO price_history (skin_id, price, recorded_at)
+    SELECT ${skinId}, p, t
+    FROM UNNEST(${prices}::numeric[], ${timestamps}::timestamptz[]) AS u(p, t)
+  `;
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
