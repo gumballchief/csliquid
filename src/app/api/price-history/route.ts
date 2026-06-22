@@ -80,46 +80,14 @@ async function bulkInsert(rows: { skinId: string; price: number; ts: number }[])
   }
 }
 
-/**
- * Seed strategy:
- *   - Dense layer : 2160 × 5-min points  → 7.5 days  (fills 1H + 4H charts)
- *   - Sparse layer: 83  × 24-hr points   → 83 days   (fills 1D + 1W charts)
- *
- * Trigger: if the DB has fewer than 80 data points in the last 8 hours,
- * the existing data is hourly-seeded (or empty). Wipe and reseed.
- */
 async function ensureSeed(skinId: string, currentPrice: number): Promise<void> {
   if (!currentPrice || currentPrice <= 0) return;
+  const res = await sql`SELECT COUNT(*) AS cnt FROM price_history WHERE skin_id = ${skinId}`;
+  if (Number(res.rows[0]?.cnt ?? 0) > 0) return; // already has data — never overwrite
 
-  // Check recent data density (last 8 h). 5-min seed → ~96 rows. Hourly seed → 8 rows.
-  const densityRes = await sql`
-    SELECT COUNT(*) AS cnt FROM price_history
-    WHERE skin_id = ${skinId}
-      AND recorded_at >= NOW() - INTERVAL '8 hours'
-  `;
-  const recentCount = Number(densityRes.rows[0]?.cnt ?? 0);
-  if (recentCount >= 80) return; // already dense — nothing to do
-
-  // Wipe stale / sparse seed and rebuild
-  await sql`DELETE FROM price_history WHERE skin_id = ${skinId}`;
-
-  const now = Math.floor(Date.now() / 1000);
-  const denseRows  = seedSnapshots(currentPrice, 2160, 5 * 60);       // 7.5 days × 5-min
-  const sparseStart = now - 90 * 86400;
-  const sparseEnd   = now - Math.round(7.5 * 86400);
-  const sparseCount = Math.round((sparseEnd - sparseStart) / 86400);   // ~83 daily points
-  const sparseRaw   = seedSnapshots(
-    denseRows[0].price,   // anchor sparse layer to the oldest dense price
-    sparseCount,
-    86400,
-  ).filter(p => p.ts < sparseEnd);
-
-  const allRows = [
-    ...sparseRaw.map(p => ({ skinId, price: p.price, ts: p.ts })),
-    ...denseRows.map(p => ({ skinId, price: p.price, ts: p.ts })),
-  ];
-
-  // Insert in chunks of 500 to stay under param limits
+  // First visit: seed 2160 × 5-min points (7.5 days) so 1H/4H charts have real bodies
+  const pts = seedSnapshots(currentPrice, 2160, 5 * 60);
+  const allRows = pts.map(p => ({ skinId, price: p.price, ts: p.ts }));
   for (let i = 0; i < allRows.length; i += 500) {
     await bulkInsert(allRows.slice(i, i + 500));
   }
@@ -153,6 +121,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       price: Number(r.price),
       ts:    Math.floor(new Date(r.recorded_at).getTime() / 1000),
     }));
+
+    // Patch the newest snapshot to the live price to eliminate end-of-chart cliffs
+    if (snaps.length > 0 && priceParam > 0) snaps[snaps.length - 1].price = priceParam;
 
     const now = Math.floor(Date.now() / 1000);
     const histories: PriceHistories = {
