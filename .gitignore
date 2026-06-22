@@ -47,3 +47,5 @@ keeper/logs/
 CSLQsy314KoBqbYFRdvD8grJFCKPN4myHnBp7Avo2JsG.json
 
 .vercel
+
+.env*
