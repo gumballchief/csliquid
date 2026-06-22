@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Return a transparent SVG placeholder instead of an error so the browser renders something
+function placeholderSvg() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="360" viewBox="0 0 360 360"><rect width="360" height="360" fill="#111214"/></svg>`;
+  return new NextResponse(svg, {
+    headers: {
+      'Content-Type':               'image/svg+xml',
+      'Cache-Control':              'public, max-age=60',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
 // Allowlist — only proxy Steam CDN hosts
 const ALLOWED_HOSTS = new Set([
   'steamcommunity-a.akamaihd.net',
@@ -40,7 +52,7 @@ export async function GET(req: NextRequest) {
 
     if (!upstream.ok) {
       console.error(`[img] Upstream ${upstream.status} for ${parsed.hostname}${parsed.pathname}`);
-      return new NextResponse(`Upstream ${upstream.status}`, { status: 502 });
+      return placeholderSvg();
     }
 
     const contentType = upstream.headers.get('content-type') ?? 'image/png';
@@ -49,7 +61,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(body, {
       headers: {
         'Content-Type':               contentType,
-        'Cache-Control':              'public, max-age=86400, stale-while-revalidate=3600',
+        'Cache-Control':              'public, max-age=604800, stale-while-revalidate=86400',
         'Access-Control-Allow-Origin': '*',
       },
     });
@@ -57,6 +69,6 @@ export async function GET(req: NextRequest) {
     clearTimeout(timer);
     const msg = (err as Error).name === 'AbortError' ? 'timeout_5s' : (err as Error).message;
     console.error(`[img] Fetch failed for ${parsed.hostname}${parsed.pathname}:`, msg);
-    return new NextResponse('Failed to fetch image', { status: 502 });
+    return placeholderSvg();
   }
 }

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getHashName } from '@/lib/marketHashNames';
 
-const FETCH_TIMEOUT_MS = 5_000;
-const CACHE_TTL        = 30_000;
+const FETCH_TIMEOUT_MS = 8_000;
+const CACHE_TTL        = 5 * 60_000;   // 5 minutes — reduces Steam rate-limit hits
+const STALE_TTL        = 60 * 60_000;  // 1 hour — serve stale before giving up
 
 // ── Module-level fallback cache ────────────────────────────────────────────
 // Returns last good price if both APIs fail so the client never sees a 503.
@@ -146,16 +147,17 @@ export async function GET(req: NextRequest) {
       const floatMsg = (floatErr as Error).message;
       console.error(`[skin-price] CSFloat failed for ${hashName}:`, floatMsg);
 
-      // Return stale cache rather than 503
+      // Return stale cache rather than 503 — never return an error status
       if (hit) {
         console.warn(`[skin-price] Returning stale cache for ${hashName} (steam: ${steamMsg}, csfloat: ${floatMsg})`);
         return NextResponse.json({ skinId, hashName, ...hit, fetchedAt: hit.ts, stale: true });
       }
 
-      return NextResponse.json(
-        { error: 'All price sources failed', detail: { steam: steamMsg, csfloat: floatMsg } },
-        { status: 503 },
-      );
+      // No cache at all — return approx price so the UI doesn't break
+      const approx = { price: 0, median: 0, volume: 0, source: 'unavailable', ts: Date.now() };
+      skinCache.set(skinId, approx);
+      console.error(`[skin-price] No data for ${hashName}, returning zero (steam: ${steamMsg}, csfloat: ${floatMsg})`);
+      return NextResponse.json({ skinId, hashName, ...approx, fetchedAt: approx.ts, stale: true });
     }
   }
 }

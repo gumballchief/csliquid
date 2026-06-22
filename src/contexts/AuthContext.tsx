@@ -185,15 +185,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const loginWithEmail = useCallback((email: string) => {
+    localStorage.removeItem('cs-liquid-logged-out');
     const existing = localStorage.getItem(KEYPAIR_KEY);
     const kp = (existing ? tryLoadB58(existing) : null) ?? Keypair.generate();
     storeKeypairDual(kp);
     persist({ type: 'email', email, address: kp.publicKey.toBase58() });
   }, []);
 
-  const loginWithWallet = useCallback((address: string) => persist({ type: 'wallet', address }), []);
+  const loginWithWallet = useCallback((address: string) => {
+    localStorage.removeItem('cs-liquid-logged-out');
+    persist({ type: 'wallet', address });
+  }, []);
 
   const loginAsGuest = useCallback(() => {
+    localStorage.removeItem('cs-liquid-logged-out');
     const existing = localStorage.getItem(KEYPAIR_KEY);
     const kp = (existing ? tryLoadB58(existing) : null) ?? Keypair.generate();
     storeKeypairDual(kp);
@@ -209,6 +214,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     Object.keys(localStorage)
       .filter(k => k.startsWith(KEYPAIR_PREFIX) || k.startsWith('cs-futures-pos-'))
       .forEach(k => localStorage.removeItem(k));
+    // Prevent Phantom from auto-reconnecting after page reload
+    localStorage.setItem('cs-liquid-logged-out', '1');
     // Clear auth — user will see AuthScreen again. No auto-generation.
     persist(null);
   }, [user]);

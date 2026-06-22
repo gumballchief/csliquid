@@ -299,4 +299,8 @@ export const TYPE_LABEL: Record<MarketType, string> = {
 export const TYPE_COLOR: Record<MarketType, string> = {
   index:  '#00ff88',
   rifle:  '#f97316',
-  pistol: '#a78b
+  pistol: '#a78bfa',
+  knife:  '#60a5fa',
+  glove:  '#f472b6',
+  case:   '#facc15',
+};
