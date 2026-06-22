@@ -65,7 +65,7 @@ function MarketIcon({ market }: { market: MarketDefinition }) {
       <div className="w-10 h-10 rounded-sm overflow-hidden shrink-0 border" style={{ borderColor: `${color}40` }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={market.iconUrl}
+          src={`/api/img?url=${encodeURIComponent(market.iconUrl)}`}
           alt={market.shortName}
           width={40}
           height={40}
