@@ -43,6 +43,7 @@ function skinIdToMarket(skinId: string): string {
 async function awaitRecordClose(data: {
   wallet: string; market: string; close_tx: string;
   exit_price: number; realized_pnl: number;
+  direction: string; size: number;
 }): Promise<void> {
   await fetch('/api/trades/record-close', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -176,7 +177,7 @@ export default function PortfolioPage() {
     if (connected && publicKey && program && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
-      await awaitRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
+      await awaitRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl, direction: pos.side.toUpperCase(), size: pos.size });
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
@@ -189,7 +190,7 @@ export default function PortfolioPage() {
       const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
       const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
-      await awaitRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
+      await awaitRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl, direction: pos.side.toUpperCase(), size: pos.size });
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
