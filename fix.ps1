@@ -4,7 +4,7 @@ Remove-Item -Force -ErrorAction SilentlyContinue '.git\index.lock'
 Remove-Item -Force -ErrorAction SilentlyContinue '.git\HEAD.lock'
 
 git add -A
-git commit -m "feat: real Steam images for all 35 markets, K/M/B prices, fix 24h% swings"
+git commit -m "fix: logout bug, skin-price 503s, img proxy 502s, AWP/AK47 index images"
 git push origin main
 
 Write-Host "DONE" -ForegroundColor Green

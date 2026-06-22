@@ -82,6 +82,8 @@ export default function WalletButton() {
 
   useEffect(() => {
     if (loggingOutRef.current) return;
+    // Don't auto-reconnect if the user just logged out
+    try { if (localStorage.getItem('cs-liquid-logged-out')) return; } catch {}
     // Don't overwrite an existing session wallet (generated or email) when Phantom auto-connects.
     // Also check localStorage directly to catch the race condition where the keypair exists
     // but AuthContext hasn't hydrated the user state yet.
