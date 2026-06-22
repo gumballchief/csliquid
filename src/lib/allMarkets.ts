@@ -24,13 +24,13 @@ export const ALL_MARKETS: MarketDefinition[] = [
     slug: 'awp-index', ticker: 'AWP-IDX', name: 'AWP Index',
     shortName: 'AWP Index',
     type: 'index', steamHashName: null, approxPrice: 55, onChain: true,
-    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJai0ki7VeTHjMGgIXSA7FVwptelsxbxSB74oZ7v8S0Vu6b2PqZvdvHHCDeUw75y4LFoS3qykR9x5WnRmY2tIC6VOAEkA8B3R_lK7EfZE0F0qg/360fx360f',
+    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwiYbf_jdk4veqYaF7IfysCnWRxuF4j-B-Xxa_nBovp3Pdwtj9cC_GaAd0DZdwQu9fuhS4kNy0NePntVTbjYpCyyT_3CgY5i9j_a9cBkcCWUKV/360fx360f',
   },
   {
     slug: 'ak47-index', ticker: 'AK47-IDX', name: 'AK-47 Index',
     shortName: 'AK-47 Index',
     type: 'index', steamHashName: null, approxPrice: 12, onChain: true,
-    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJai0ki7VeTHjNqgJ3KEtwYnp8j1-lz_D0ugn5S4pCEOt6StMfQ0I_LHXWWUk7sks-A6HS22kB9x4jyGwo2tIHOJLlh3iFV5GUE/360fx360f',
+    iconUrl: 'https://community.steamstatic.com/economy/image/i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLwlcK3wiFO0P_6afVSKP-EAm6extF6ueZhW2exwkl2tmTXwt39eCiUPQR2DMN4TOVetUK8xoLgM-K341eM2otDnC6okGoXufBz_TAB/360fx360f',
   },
   {
     slug: 'knife-index', ticker: 'KNIFE-IDX', name: 'Knife Index',
@@ -299,8 +299,4 @@ export const TYPE_LABEL: Record<MarketType, string> = {
 export const TYPE_COLOR: Record<MarketType, string> = {
   index:  '#00ff88',
   rifle:  '#f97316',
-  pistol: '#a78bfa',
-  knife:  '#60a5fa',
-  glove:  '#f472b6',
-  case:   '#facc15',
-};
+  pistol: '#a78b
