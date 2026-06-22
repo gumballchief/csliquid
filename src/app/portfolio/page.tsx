@@ -149,19 +149,21 @@ export default function PortfolioPage() {
     try {
       const res  = await fetch(`/api/trades/history?wallet=${signerPubkey.toBase58()}`);
       const data = await res.json();
-      if (Array.isArray(data)) setDbHistory(data);
+      setDbHistory(Array.isArray(data) ? data : []);
     } catch {
-      // leave previous state
+      setDbHistory([]); // prevent null-loop on network error
     } finally {
       setLoadingHistory(false);
     }
   }, [signerPubkey]);
 
+  // Load history at mount for real-wallet users (not gated on History tab click)
+  // so the badge count is visible immediately and history is ready when user switches.
   useEffect(() => {
-    if (tab === 'history' && showOnChain && dbHistory === null) {
+    if (showOnChain && dbHistory === null) {
       loadDbHistory();
     }
-  }, [tab, showOnChain, dbHistory, loadDbHistory]);
+  }, [showOnChain, dbHistory, loadDbHistory]);
 
   // Sync mark prices from on-chain PriceFeed accounts — same source as close_position.
   useEffect(() => {

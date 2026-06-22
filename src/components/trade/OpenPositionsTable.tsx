@@ -32,6 +32,13 @@ function fireRecordClose(data: Record<string, unknown>): void {
   }).catch(() => {});
 }
 
+// Returns true when the error means the position PDA doesn't exist on-chain
+// (devnet reset, already closed on-chain, etc.) — safe to clear locally.
+function isPositionGone(err: unknown): boolean {
+  const msg = extractErrorMessage(err).toLowerCase();
+  return msg.includes('initialized') || msg.includes('account does not exist') || msg.includes('accountnotinitialized');
+}
+
 export default function OpenPositionsTable() {
   const positions           = usePositionsStore((s) => s.positions);
   const walletKey           = usePositionsStore((s) => s.walletKey);
@@ -116,26 +123,37 @@ export default function OpenPositionsTable() {
 
     // Phantom wallet
     if (isOnChain && program && publicKey && isMarketConfigured(pos.skinId)) {
-      const sig = await sendClosePosition(program, publicKey, pos.skinId);
-      addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
-      fireRecordClose({ ...basePayload, wallet: publicKey.toBase58(), close_tx: sig });
-      closePosition(pos.id, exitPrice);
-      return;
+      try {
+        const sig = await sendClosePosition(program, publicKey, pos.skinId);
+        addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
+        fireRecordClose({ ...basePayload, wallet: publicKey.toBase58(), close_tx: sig });
+        closePosition(pos.id, exitPrice);
+        return;
+      } catch (err) {
+        // Re-throw user rejections and non-account errors; fall through for missing PDAs
+        if (!isPositionGone(err)) throw err;
+      }
     }
     // Generated wallet
     if (isOnChain && user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
-      const kpRaw = localStorage.getItem('guest_keypair');
-      if (!kpRaw) throw new Error('No trading keypair found');
-      const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
-      const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
-      addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
-      fireRecordClose({ ...basePayload, wallet: signer.publicKey.toBase58(), close_tx: sig });
-      closePosition(pos.id, exitPrice);
-      return;
+      try {
+        const kpRaw = localStorage.getItem('guest_keypair');
+        if (!kpRaw) throw new Error('No trading keypair found');
+        const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
+        const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
+        addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
+        fireRecordClose({ ...basePayload, wallet: signer.publicKey.toBase58(), close_tx: sig });
+        closePosition(pos.id, exitPrice);
+        return;
+      } catch (err) {
+        if (!isPositionGone(err)) throw err;
+      }
     }
-    // Simulation close — position was never on-chain
-    if (walletKey) {
-      fireRecordClose({ ...basePayload, wallet: walletKey, sim: true });
+    // Simulation close — position was never on-chain, or PDA is gone (devnet reset / already settled)
+    const closeWallet = publicKey?.toBase58()
+      ?? (user?.type === 'generated' ? user.address : walletKey);
+    if (closeWallet) {
+      fireRecordClose({ ...basePayload, wallet: closeWallet, sim: true });
     }
     closePosition(pos.id, exitPrice);
   };
