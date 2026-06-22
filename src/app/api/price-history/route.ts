@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
+import { sql, db as pgPool } from '@vercel/postgres';
 import { initDb, db } from '@/lib/db';
 
 export interface OHLCCandle { time: number; open: number; high: number; low: number; close: number }
@@ -75,14 +75,24 @@ async function ensureSeed(skinId: string, currentPrice: number): Promise<void> {
   // Generate 2160 points at 1-hour intervals = ~90 days
   const pts = seedSnapshots(currentPrice, 2160, 3600);
 
-  // Bulk insert via UNNEST — single query instead of 2160 round-trips
-  const prices     = pts.map(p => p.price);
-  const timestamps = pts.map(p => new Date(p.ts * 1000).toISOString());
-  await sql`
-    INSERT INTO price_history (skin_id, price, recorded_at)
-    SELECT ${skinId}, p, t
-    FROM UNNEST(${prices}::numeric[], ${timestamps}::timestamptz[]) AS u(p, t)
-  `;
+  // Bulk insert via parameterized multi-row VALUES — single round-trip,
+  // compatible with @vercel/postgres (no array params needed).
+  const params: (string | number)[] = [];
+  const rows: string[] = [];
+  for (let i = 0; i < pts.length; i++) {
+    const base = i * 3;
+    rows.push(`($${base + 1}, $${base + 2}, $${base + 3})`);
+    params.push(skinId, pts[i].price, new Date(pts[i].ts * 1000).toISOString());
+  }
+  const client = await pgPool.connect();
+  try {
+    await client.query(
+      `INSERT INTO price_history (skin_id, price, recorded_at) VALUES ${rows.join(',')}`,
+      params,
+    );
+  } finally {
+    client.release();
+  }
 }
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
