@@ -73,6 +73,36 @@ async function fetchFromSteam(hashName: string): Promise<{ price: number; median
   }
 }
 
+// ── Skinport (bulk, cached) ────────────────────────────────────────────────
+
+interface SkinportItem { market_hash_name: string; suggested_price: number | null; min_price: number | null }
+let skinportCache: { items: SkinportItem[]; ts: number } | null = null;
+const SKINPORT_TTL = 5 * 60_000;
+
+async function fetchFromSkinport(hashName: string): Promise<number> {
+  if (!skinportCache || Date.now() - skinportCache.ts > SKINPORT_TTL) {
+    const ac    = new AbortController();
+    const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(
+        'https://api.skinport.com/v1/items?app_id=730&currency=USD',
+        { headers: { 'Accept': 'application/json' }, signal: ac.signal },
+      );
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`skinport_http_${res.status}`);
+      skinportCache = { items: await res.json() as SkinportItem[], ts: Date.now() };
+    } catch (err) {
+      clearTimeout(timer);
+      throw new Error((err as Error).name === 'AbortError' ? 'skinport_timeout' : (err as Error).message);
+    }
+  }
+  const item = skinportCache.items.find(i => i.market_hash_name === hashName);
+  if (!item) throw new Error('skinport_not_found');
+  const price = item.min_price ?? item.suggested_price ?? 0;
+  if (!price) throw new Error('skinport_price_zero');
+  return price;
+}
+
 // ── CSFloat Market (fallback) ──────────────────────────────────────────────
 
 interface CSFloatListing { price: number }
@@ -84,8 +114,8 @@ async function fetchFromCSFloat(hashName: string): Promise<{ price: number; volu
 
   try {
     const url =
-      'https://csfloat.com/api/v1/listings?' +
-      new URLSearchParams({ market_hash_name: hashName, sort_by: 'lowest_price', limit: '5' }).toString();
+      'https://csfloat.com/api/v0/listings?' +
+      new URLSearchParams({ market_hash_name: hashName, limit: '10' }).toString();
 
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible)', 'Accept': 'application/json' },
@@ -110,6 +140,16 @@ async function fetchFromCSFloat(hashName: string): Promise<{ price: number; volu
   }
 }
 
+// ── Price-history snapshot (fire-and-forget) ───────────────────────────────
+
+function recordSnapshot(skinId: string, price: number): void {
+  fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/price-history`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skinId, price }),
+  }).catch(() => {});
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -127,37 +167,63 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ skinId, hashName, ...hit, fetchedAt: hit.ts });
   }
 
-  // Try Steam first
-  try {
-    const { price, median, volume } = await fetchFromSteam(hashName);
-    const entry: CachedPrice = { price, median, volume, source: 'steam', ts: Date.now() };
-    skinCache.set(skinId, entry);
-    return NextResponse.json({ skinId, hashName, price, median, volume, source: 'steam', fetchedAt: entry.ts });
-  } catch (steamErr) {
-    const steamMsg = (steamErr as Error).message;
-    console.error(`[skin-price] Steam failed for ${hashName}:`, steamMsg);
+  // Fetch Steam + Skinport in parallel; CSFloat is a serial fallback
+  const [steamResult, skinportResult] = await Promise.allSettled([
+    fetchFromSteam(hashName),
+    fetchFromSkinport(hashName),
+  ]);
 
-    // Try CSFloat as fallback
+  const prices: number[] = [];
+  let volume = 0;
+
+  if (steamResult.status === 'fulfilled') {
+    prices.push(steamResult.value.price);
+    volume = steamResult.value.volume;
+  } else {
+    console.warn(`[skin-price] Steam failed for ${hashName}:`, steamResult.reason?.message);
+  }
+
+  if (skinportResult.status === 'fulfilled' && skinportResult.value > 0) {
+    prices.push(skinportResult.value);
+  } else {
+    console.warn(`[skin-price] Skinport failed for ${hashName}:`, (skinportResult as PromiseRejectedResult).reason?.message);
+  }
+
+  // If both primary sources failed, try CSFloat
+  if (prices.length === 0) {
     try {
-      const { price, volume } = await fetchFromCSFloat(hashName);
-      const entry: CachedPrice = { price, median: price, volume, source: 'csfloat', ts: Date.now() };
-      skinCache.set(skinId, entry);
-      return NextResponse.json({ skinId, hashName, price, median: price, volume, source: 'csfloat', fetchedAt: entry.ts });
+      const { price: cfPrice, volume: cfVol } = await fetchFromCSFloat(hashName);
+      prices.push(cfPrice);
+      volume = cfVol;
     } catch (floatErr) {
-      const floatMsg = (floatErr as Error).message;
-      console.error(`[skin-price] CSFloat failed for ${hashName}:`, floatMsg);
-
-      // Return stale cache rather than 503 — never return an error status
-      if (hit) {
-        console.warn(`[skin-price] Returning stale cache for ${hashName} (steam: ${steamMsg}, csfloat: ${floatMsg})`);
-        return NextResponse.json({ skinId, hashName, ...hit, fetchedAt: hit.ts, stale: true });
-      }
-
-      // No cache at all — return approx price so the UI doesn't break
-      const approx = { price: 0, median: 0, volume: 0, source: 'unavailable', ts: Date.now() };
-      skinCache.set(skinId, approx);
-      console.error(`[skin-price] No data for ${hashName}, returning zero (steam: ${steamMsg}, csfloat: ${floatMsg})`);
-      return NextResponse.json({ skinId, hashName, ...approx, fetchedAt: approx.ts, stale: true });
+      console.error(`[skin-price] CSFloat also failed for ${hashName}:`, (floatErr as Error).message);
     }
   }
+
+  if (prices.length > 0) {
+    // Median of available prices
+    const sorted = [...prices].sort((a, b) => a - b);
+    const price  = sorted.length % 2 === 0
+      ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+      : sorted[Math.floor(sorted.length / 2)];
+    const median = steamResult.status === 'fulfilled' ? steamResult.value.median : price;
+
+    const entry: CachedPrice = {
+      price, median, volume,
+      source: `${steamResult.status === 'fulfilled' ? 'steam' : ''}${skinportResult.status === 'fulfilled' ? '+skinport' : ''}`.replace(/^\+/, '') || 'csfloat',
+      ts: Date.now(),
+    };
+    skinCache.set(skinId, entry);
+    void recordSnapshot(skinId, price);
+    return NextResponse.json({ skinId, hashName, ...entry, fetchedAt: entry.ts });
+  }
+
+  // All sources failed — return stale cache or zero
+  if (hit) {
+    console.warn(`[skin-price] All sources failed for ${hashName}, returning stale`);
+    return NextResponse.json({ skinId, hashName, ...hit, fetchedAt: hit.ts, stale: true });
+  }
+  const approx = { price: 0, median: 0, volume: 0, source: 'unavailable', ts: Date.now() };
+  skinCache.set(skinId, approx);
+  return NextResponse.json({ skinId, hashName, ...approx, fetchedAt: approx.ts, stale: true });
 }

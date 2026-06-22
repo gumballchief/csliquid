@@ -30,6 +30,18 @@ export async function initDb(): Promise<void> {
       last_seen  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS price_history (
+      id          SERIAL PRIMARY KEY,
+      skin_id     TEXT          NOT NULL,
+      price       NUMERIC(20,6) NOT NULL,
+      recorded_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_ph_skin_time
+    ON price_history (skin_id, recorded_at DESC)
+  `;
 }
 
 export interface TradeRecord {
@@ -123,6 +135,29 @@ export const db = {
       LIMIT ${limit}
     `;
     return result.rows as TradeRecord[];
+  },
+
+  async recordPriceSnapshot(skinId: string, price: number): Promise<void> {
+    await sql`INSERT INTO price_history (skin_id, price) VALUES (${skinId}, ${price})`;
+  },
+
+  async getPriceSnapshots(
+    skinId: string,
+    since: Date,
+    limit = 5000,
+  ): Promise<{ price: number; recorded_at: string }[]> {
+    const result = await sql`
+      SELECT price, recorded_at FROM price_history
+      WHERE skin_id = ${skinId} AND recorded_at >= ${since.toISOString()}
+      ORDER BY recorded_at ASC
+      LIMIT ${limit}
+    `;
+    return result.rows as { price: number; recorded_at: string }[];
+  },
+
+  async countPriceSnapshots(skinId: string): Promise<number> {
+    const result = await sql`SELECT COUNT(*) AS cnt FROM price_history WHERE skin_id = ${skinId}`;
+    return Number(result.rows[0].cnt);
   },
 
   async upsertWallet(address: string): Promise<void> {
