@@ -111,8 +111,11 @@ export default function OpenPositionsTable() {
       leverage:     pos.leverage,
     };
 
+    // Only attempt on-chain close for positions that were actually opened on-chain
+    const isOnChain = !!pos.txSignature;
+
     // Phantom wallet
-    if (program && publicKey && isMarketConfigured(pos.skinId)) {
+    if (isOnChain && program && publicKey && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
       fireRecordClose({ ...basePayload, wallet: publicKey.toBase58(), close_tx: sig });
@@ -120,7 +123,7 @@ export default function OpenPositionsTable() {
       return;
     }
     // Generated wallet
-    if (user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
+    if (isOnChain && user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
       const kpRaw = localStorage.getItem('guest_keypair');
       if (!kpRaw) throw new Error('No trading keypair found');
       const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
@@ -130,7 +133,7 @@ export default function OpenPositionsTable() {
       closePosition(pos.id, exitPrice);
       return;
     }
-    // Simulation — no on-chain tx; only record if we have a wallet address
+    // Simulation close — position was never on-chain
     if (walletKey) {
       fireRecordClose({ ...basePayload, wallet: walletKey, sim: true });
     }
