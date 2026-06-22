@@ -63,9 +63,9 @@ const snapshots     = new Map<string, Snapshot[]>();
 const historyAnchor = new Map<string, PriceHistories>();
 const mockPrices    = new Map<string, number>();
 
-// Real OHLC history cache (5-min TTL — same as skin-price cache)
+// Real OHLC history cache (30s TTL — short enough to reflect a reseed quickly)
 const realHistoryCache = new Map<string, { histories: PriceHistories; ts: number }>();
-const HISTORY_CACHE_TTL = 5 * 60_000;
+const HISTORY_CACHE_TTL = 30_000;
 
 async function fetchRealHistories(skinId: string, currentPrice?: number): Promise<PriceHistories | null> {
   const hit = realHistoryCache.get(skinId);
