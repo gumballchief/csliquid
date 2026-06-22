@@ -40,11 +40,11 @@ function skinIdToMarket(skinId: string): string {
   return SKIN_TO_MARKET[skinId] ?? skinId.toUpperCase();
 }
 
-function fireRecordClose(data: {
+async function awaitRecordClose(data: {
   wallet: string; market: string; close_tx: string;
   exit_price: number; realized_pnl: number;
-}): void {
-  fetch('/api/trades/record-close', {
+}): Promise<void> {
+  await fetch('/api/trades/record-close', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }).catch(() => {});
@@ -159,7 +159,16 @@ export default function PortfolioPage() {
 
   // Close an on-chain position
   const handleCloseOnChain = useCallback(async (pos: OnChainPosition) => {
-    const exitPrice = markPrices[pos.priceSkinId] || pos.entryPrice;
+    // Prefer live on-chain price; fall back to API fetch; last resort = entryPrice
+    let exitPrice = markPrices[pos.priceSkinId] ?? 0;
+    if (!exitPrice) {
+      try {
+        const r = await fetch(`/api/skin-price?id=${encodeURIComponent(pos.priceSkinId)}`);
+        if (r.ok) exitPrice = ((await r.json()) as { price?: number }).price ?? 0;
+      } catch { /* ignore */ }
+    }
+    if (!exitPrice) exitPrice = pos.entryPrice;
+
     const realizedPnl = pos.side === 'long'
       ? (exitPrice - pos.entryPrice) * pos.size
       : (pos.entryPrice - exitPrice) * pos.size;
@@ -167,11 +176,11 @@ export default function PortfolioPage() {
     if (connected && publicKey && program && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
-      fireRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
+      await awaitRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
-      setDbHistory(null); // invalidate so history tab refetches
+      setDbHistory(null);
       return;
     }
     if (user?.type === 'generated' && isMarketConfigured(pos.skinId)) {
@@ -180,11 +189,11 @@ export default function PortfolioPage() {
       const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
       const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
-      fireRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
+      await awaitRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl });
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
-      setDbHistory(null); // invalidate so history tab refetches
+      setDbHistory(null);
       return;
     }
     throw new Error('Cannot close position — wallet not available');

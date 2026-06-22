@@ -63,6 +63,27 @@ const snapshots     = new Map<string, Snapshot[]>();
 const historyAnchor = new Map<string, PriceHistories>();
 const mockPrices    = new Map<string, number>();
 
+// Real OHLC history cache (5-min TTL — same as skin-price cache)
+const realHistoryCache = new Map<string, { histories: PriceHistories; ts: number }>();
+const HISTORY_CACHE_TTL = 5 * 60_000;
+
+async function fetchRealHistories(skinId: string): Promise<PriceHistories | null> {
+  const hit = realHistoryCache.get(skinId);
+  if (hit && Date.now() - hit.ts < HISTORY_CACHE_TTL) return hit.histories;
+  try {
+    const res = await fetch(`/api/price-history?skinId=${encodeURIComponent(skinId)}`);
+    if (!res.ok) return null;
+    const data = await res.json() as PriceHistories & { empty?: boolean; error?: string };
+    if (data.empty || data.error) return null;
+    if (!data['1H'] || !data['4H'] || !data['1D'] || !data['1W']) return null;
+    if (Object.values(data).every(v => Array.isArray(v) && v.length === 0)) return null;
+    realHistoryCache.set(skinId, { histories: data as PriceHistories, ts: Date.now() });
+    return data as PriceHistories;
+  } catch {
+    return null;
+  }
+}
+
 // ── Bulk index price cache (one fetch updates all 4 indexes) ──────────────
 
 /** Maps each index skinId to its key in the /api/prices response. */
@@ -248,6 +269,7 @@ export async function fetchSkinPrice(skinId: string): Promise<SkinPriceData> {
     const high24h   = Math.max(price, prevPrice) * 1.004;
     const low24h    = Math.min(price, prevPrice) * 0.997;
 
+    const realHistories = await fetchRealHistories(skinId);
     const result: SkinPriceData = {
       skinId,
       markPrice:    price,
@@ -258,7 +280,7 @@ export async function fetchSkinPrice(skinId: string): Promise<SkinPriceData> {
       low24h,
       volume24h:    rawVolume * price,
       fundingRate:  mock?.fundingRate ?? 0,
-      histories:    getHistories(skinId, price),
+      histories:    realHistories ?? getHistories(skinId, price),
       source:       'live',
       fetchedAt:    Date.now(),
     };
