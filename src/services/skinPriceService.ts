@@ -50,10 +50,10 @@ const STALE_MS     = 8_000;   // aggressive client refresh; server cache shields
 const SNAPSHOT_TTL = 26 * 3_600_000; // keep 26 h of snapshots
 
 const RANGE_CFG: Record<PriceRange, { hours: number; count: number }> = {
-  '1H': { hours: 1 / 60,  count: 120 },  // 1-min candles  → 2 h
-  '4H': { hours: 5 / 60,  count: 288 },  // 5-min candles  → 24 h
-  '1D': { hours: 0.5,     count: 336 },  // 30-min candles → 7 days
-  '1W': { hours: 4,       count: 720 },  // 4-hr candles   → 120 days (~4 months)
+  '1H': { hours: 1 / 60,  count: 480 },  // 1-min candles  → 8 h of tick detail
+  '4H': { hours: 5 / 60,  count: 360 },  // 5-min candles  → 30 h
+  '1D': { hours: 2,       count: 240 },  // 2-hr candles   → 20 days
+  '1W': { hours: 24,      count: 120 },  // daily candles  → 4 months
 };
 
 // ── Module-level stores (browser singleton) ────────────────────────────────
