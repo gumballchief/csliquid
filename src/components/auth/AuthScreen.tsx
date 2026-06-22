@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'; // useState kept for button hover state
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,11 +39,9 @@ function Rule() {
 }
 
 export default function AuthScreen() {
-  const [email, setEmail] = useState('');
-
   const { connected, publicKey } = useWallet();
   const { setVisible }           = useWalletModal();
-  const { loginWithWallet, loginAsGuest, loginWithEmail } = useAuth();
+  const { loginWithWallet, loginAsGuest } = useAuth();
 
   // If wallet adapter auto-connects (returning Phantom user), log them in immediately.
   useEffect(() => {
@@ -58,7 +56,7 @@ export default function AuthScreen() {
       {/* Logo */}
       <div style={{ marginBottom: '2.5rem', textAlign: 'center' }}>
         <div style={{ fontFamily: 'monospace', fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.02em', lineHeight: 1 }}>
-          <span style={{ color: '#f97316' }}>CS</span><span style={{ color: GREEN }}>LIQUID</span>
+          <span style={{ color: '#f97316' }}>CS</span><span style={{ color: '#ffffff' }}>LIQUID</span>
         </div>
         <div style={{ fontFamily: 'monospace', fontSize: '0.625rem', color: MUTED, textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '0.5rem' }}>
           CS skin perpetual futures · Solana devnet
@@ -88,37 +86,6 @@ export default function AuthScreen() {
         <GhostBtn onClick={loginAsGuest}>
           Continue as Guest →
         </GhostBtn>
-
-        <Rule />
-
-        {/* ── 03 Email Login ── */}
-        <SectionHead n={3} label="Email Login" />
-        <p style={{ fontFamily: 'monospace', fontSize: '0.6875rem', color: MUTED, marginBottom: '0.875rem', lineHeight: 1.5 }}>
-          Enter your email for a browser-linked session with a generated keypair.
-        </p>
-        <input
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          style={{
-            width: '100%',
-            boxSizing: 'border-box',
-            marginBottom: '0.625rem',
-            padding: '0.625rem 0.75rem',
-            background: BG,
-            border: `1px solid ${BORDER2}`,
-            borderRadius: 3,
-            color: TEXT,
-            fontFamily: 'monospace',
-            fontSize: '0.75rem',
-            outline: 'none',
-          }}
-          onKeyDown={e => { if (e.key === 'Enter' && email.includes('@')) loginWithEmail(email); }}
-        />
-        <GreenBtn onClick={() => loginWithEmail(email)} disabled={!email.includes('@')}>
-          Continue with Email →
-        </GreenBtn>
       </div>
     </div>
   );
