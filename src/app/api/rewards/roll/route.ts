@@ -80,7 +80,8 @@ export async function POST(req: NextRequest) {
     }
   } catch { /* KV unavailable — allow roll */ }
 
-  // Check trade eligibility: did user trade $100+ collateral today?
+  // Check trade eligibility: has user ever opened any position?
+  // (Devnet: fake USDC, so any trade ever qualifies — no collateral minimum, no date gate)
   let eligible = false;
   if (!process.env.POSTGRES_URL) {
     // No DB — grant eligibility for demo purposes
@@ -92,8 +93,6 @@ export async function POST(req: NextRequest) {
         SELECT COUNT(*) AS cnt
         FROM positions
         WHERE wallet = ${wallet}
-          AND collateral >= 100
-          AND opened_at >= CURRENT_DATE AT TIME ZONE 'UTC'
       `;
       eligible = Number(result.rows[0]?.cnt ?? 0) > 0;
     } catch {
@@ -106,7 +105,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       error: 'Not eligible',
       eligible: false,
-      reason: 'Trade $100+ collateral today to unlock your daily case roll.',
+      reason: 'Open at least one trade to unlock your daily case roll.',
     }, { status: 403 });
   }
 

@@ -83,7 +83,14 @@ export default function WalletButton() {
   useEffect(() => {
     if (loggingOutRef.current) return;
     // Don't auto-reconnect if the user just logged out
-    try { if (localStorage.getItem('cs-liquid-logged-out')) return; } catch {}
+    try {
+      if (localStorage.getItem('cs-liquid-logged-out')) {
+        // Phantom may have auto-reconnected via `autoConnect` — force it to disconnect
+        // so the wallet button doesn't show the old address as if still logged in.
+        if (connected) disconnect();
+        return;
+      }
+    } catch {}
     // Don't overwrite an existing session wallet (generated or email) when Phantom auto-connects.
     // Also check localStorage directly to catch the race condition where the keypair exists
     // but AuthContext hasn't hydrated the user state yet.
@@ -99,7 +106,7 @@ export default function WalletButton() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, publicKey, loginWithWallet, user?.type]);
+  }, [connected, publicKey, loginWithWallet, user?.type, disconnect]);
 
   const fetchBalances = useCallback(async (address: string) => {
     setBalance('loading');
