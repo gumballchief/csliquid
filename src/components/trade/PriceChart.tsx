@@ -7,11 +7,10 @@ import { PriceRange, PriceHistories } from '@/services/skinPriceService';
 type Range = PriceRange;
 
 const RANGES: { id: Range; hours: number; count: number; label: string }[] = [
-  { id: '1m',  hours: 1 / 60,   count: 60,  label: '1m'  },  // 1-min candles,  last 60 min
-  { id: '5m',  hours: 5 / 60,   count: 60,  label: '5m'  },  // 5-min candles,  last 5 h
-  { id: '15m', hours: 15 / 60,  count: 60,  label: '15m' },  // 15-min candles, last 15 h
-  { id: '1h',  hours: 1,        count: 48,  label: '1h'  },  // 1-hr candles,   last 48 h
-  { id: '1d',  hours: 24,       count: 30,  label: '1d'  },  // daily candles,  last 30 d
+  { id: '1H', hours: 1 / 60, count: 120, label: '1H' },  // 1-min candles  → 2 h of detail
+  { id: '4H', hours: 5 / 60, count: 288, label: '4H' },  // 5-min candles  → 24 h
+  { id: '1D', hours: 0.5,    count: 336, label: '1D' },  // 30-min candles → 7 days
+  { id: '1W', hours: 4,      count: 720, label: '1W' },  // 4-hr candles   → ~4 months
 ];
 
 export interface ChartPosition {
@@ -40,13 +39,13 @@ export default function PriceChart({ markPrice, skinName, externalHistories, ope
   const entryLineRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const liqLineRef   = useRef<any>(null);
-  const rangeRef     = useRef<Range>('5m');
+  const rangeRef     = useRef<Range>('4H');
   // Ref so the chart-init effect (mount-only) always reads the latest allData
   // without being re-run when allData changes (which would recreate the chart).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allDataRef   = useRef<Record<Range, any[]>>({} as any);
 
-  const [activeRange, setActiveRange] = useState<Range>('5m');
+  const [activeRange, setActiveRange] = useState<Range>('4H');
   const [isReady, setIsReady] = useState(false);
   const [hover, setHover] = useState<{ o: number; h: number; l: number; c: number } | null>(null);
 

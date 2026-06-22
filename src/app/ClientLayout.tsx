@@ -54,26 +54,42 @@ function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [connected, user, logout]);
 
-  // Landing page is public — render it immediately without any auth check
-  // so there is no login flash on first load.
-  if (pathname === '/') {
-    return (
-      <PageErrorBoundary>
-        <PriceTicker />
-        <Header />
-        {children}
-        <TxToastContainer />
-      </PageErrorBoundary>
-    );
+  const isLanding = pathname === '/';
+
+  // Pre-hydration: show landing page immediately so new visitors never see a
+  // blank screen or auth flash. All other pages wait for localStorage to load.
+  if (!hydrated) {
+    if (isLanding) {
+      return (
+        <PageErrorBoundary>
+          <PriceTicker />
+          <Header />
+          {children}
+          <TxToastContainer />
+        </PageErrorBoundary>
+      );
+    }
+    return null;
   }
 
-  // Render nothing until localStorage has been read to avoid flash.
-  if (!hydrated) return null;
+  // Post-hydration, not authenticated: landing page is public; everything else
+  // shows the auth screen.
+  if (!isAuthenticated) {
+    if (isLanding) {
+      return (
+        <PageErrorBoundary>
+          <PriceTicker />
+          <Header />
+          {children}
+          <TxToastContainer />
+        </PageErrorBoundary>
+      );
+    }
+    return <AuthScreen />;
+  }
 
-  // New visitor or explicit logout — show the three-option auth screen.
-  if (!isAuthenticated) return <AuthScreen />;
-
-  // Authenticated — render the full app.
+  // Authenticated — full app shell on every page (including landing).
+  // This ensures the wallet dropdown / logout button is always accessible.
   return (
     <PageErrorBoundary>
       <AirdropSyncer />

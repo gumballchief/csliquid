@@ -175,7 +175,7 @@ export function useSkinPrice(skinId: string): UseSkinPriceResult {
     low24h:       0,
     volume24h:    0,
     fundingRate:  0,
-    histories:    { '1m': [], '5m': [], '15m': [], '1h': [], '1d': [] },
+    histories:    { '1H': [], '4H': [], '1D': [], '1W': [] },
     source:       'mock',
     fetchedAt:    0,
   }), [skinId]);
