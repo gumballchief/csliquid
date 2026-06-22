@@ -42,13 +42,26 @@ function skinIdToMarket(skinId: string): string {
 
 async function awaitRecordClose(data: {
   wallet: string; market: string; close_tx: string;
-  exit_price: number; realized_pnl: number;
-  direction: string; size: number;
+  exit_price: number; entry_price: number; realized_pnl: number;
+  direction: string; size: number; leverage: number;
 }): Promise<void> {
   await fetch('/api/trades/record-close', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }).catch(() => {});
+}
+
+function fireReferralOnClose(notional: number, fee: number): void {
+  try {
+    const match = document.cookie.split('; ').find(r => r.startsWith('referrer='));
+    if (!match) return;
+    const referrerWallet = decodeURIComponent(match.split('=')[1] ?? '');
+    if (!referrerWallet) return;
+    fetch('/api/referral/track', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referrerWallet, tradeVolume: notional, fee }),
+    }).catch(() => {});
+  } catch { /* ignore */ }
 }
 
 export default function PortfolioPage() {
@@ -177,7 +190,10 @@ export default function PortfolioPage() {
     if (connected && publicKey && program && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
-      await awaitRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl, direction: pos.side.toUpperCase(), size: pos.size });
+      const closingNotional = pos.size * exitPrice;
+      const closingFee      = closingNotional * 0.002;
+      await awaitRecordClose({ wallet: publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, entry_price: pos.entryPrice, realized_pnl: realizedPnl, direction: pos.side.toUpperCase(), size: pos.size, leverage: pos.leverage });
+      fireReferralOnClose(closingNotional, closingFee);
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
@@ -190,7 +206,10 @@ export default function PortfolioPage() {
       const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
       const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skinLabel });
-      await awaitRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, realized_pnl: realizedPnl, direction: pos.side.toUpperCase(), size: pos.size });
+      const closingNotional2 = pos.size * exitPrice;
+      const closingFee2      = closingNotional2 * 0.002;
+      await awaitRecordClose({ wallet: signer.publicKey.toBase58(), market: skinIdToMarket(pos.skinId), close_tx: sig, exit_price: exitPrice, entry_price: pos.entryPrice, realized_pnl: realizedPnl, direction: pos.side.toUpperCase(), size: pos.size, leverage: pos.leverage });
+      fireReferralOnClose(closingNotional2, closingFee2);
       await refreshPositions();
       const b = await fetchUserAccountBalance(connection, signer.publicKey).catch(() => null);
       if (b !== null) setVaultBalance(b);
