@@ -46,11 +46,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const isSim = body.sim === true;
+
     // ── Format validation ─────────────────────────────────────────────────
     if (!WALLET_REGEX.test(String(wallet))) {
       return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
     }
-    if (!TX_REGEX.test(String(close_tx))) {
+    if (!isSim && !TX_REGEX.test(String(close_tx))) {
       return NextResponse.json({ error: 'Invalid transaction signature' }, { status: 400 });
     }
     if (!MARKET_REGEX.test(String(market))) {
@@ -60,7 +62,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // ── Numeric sanity ────────────────────────────────────────────────────
     const pnl = Number(realized_pnl ?? 0);
     const ep  = Number(exit_price ?? 0);
-    // PnL sanity: can't profit more than 500x collateral (matches on-chain cap)
     if (Math.abs(pnl) > 10_000_000) {
       return NextResponse.json({ error: 'Invalid PnL value' }, { status: 400 });
     }
@@ -68,11 +69,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Invalid exit price' }, { status: 400 });
     }
 
-    // ── On-chain tx existence check ───────────────────────────────────────
-    const exists = await txExistsOnChain(String(close_tx));
-    if (!exists) {
-      return NextResponse.json({ error: 'Transaction not found on-chain' }, { status: 400 });
+    // ── On-chain tx existence check (skipped for simulation trades) ───────
+    if (!isSim) {
+      const exists = await txExistsOnChain(String(close_tx));
+      if (!exists) {
+        return NextResponse.json({ error: 'Transaction not found on-chain' }, { status: 400 });
+      }
     }
+
+    const resolvedCloseTx = isSim
+      ? `sim_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
+      : String(close_tx);
 
     const dir  = direction   ? String(direction)    : null;
     const sz   = size        ? Number(size)         : null;
@@ -81,7 +88,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await db.recordClosePosition(
       String(wallet),
       String(market),
-      String(close_tx),
+      resolvedCloseTx,
       ep,
       pnl,
       dir && sz != null ? { direction: dir, size: sz, entry_price: entryEp, leverage: lev } : undefined,

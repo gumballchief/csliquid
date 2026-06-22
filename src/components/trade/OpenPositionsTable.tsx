@@ -10,13 +10,31 @@ import { useAuth } from '@/contexts/AuthContext';
 import { sendClosePosition, sendClosePositionKeypair, extractErrorMessage } from '@/lib/program';
 import { decodeBase58 } from '@/lib/base58';
 import { isMarketConfigured } from '@/lib/markets';
+import { calcTakerFee } from '@/lib/perps';
 import { fetchSkinPrice } from '@/services/skinPriceService';
 import { useOnChainPrices } from '@/hooks/useOnChainPrices';
 
 const POLL_MS = 30_000;
 
+const SKIN_TO_MARKET: Record<string, string> = {
+  'awp-index':   'AWP',
+  'ak47-index':  'AK47',
+  'knife-index': 'KNIFE',
+  'glove-index': 'GLOVE',
+  'cs500-index': 'CS500',
+};
+const skinIdToMarket = (id: string) => SKIN_TO_MARKET[id] ?? id.toUpperCase();
+
+function fireRecordClose(data: Record<string, unknown>): void {
+  fetch('/api/trades/record-close', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).catch(() => {});
+}
+
 export default function OpenPositionsTable() {
   const positions           = usePositionsStore((s) => s.positions);
+  const walletKey           = usePositionsStore((s) => s.walletKey);
   const closePosition       = usePositionsStore((s) => s.closePosition);
   const closeAllPositions   = usePositionsStore((s) => s.closeAllPositions);
   const updateMarkPrices    = usePositionsStore((s) => s.updateMarkPrices);
@@ -78,11 +96,27 @@ export default function OpenPositionsTable() {
   };
 
   const handleClosePosition = async (pos: PerpsPosition): Promise<void> => {
+    const exitPrice   = pos.markPrice;
+    const grossPnl    = pos.side === 'long'
+      ? (exitPrice - pos.entryPrice) * pos.size
+      : (pos.entryPrice - exitPrice) * pos.size;
+    const realizedPnl = grossPnl - calcTakerFee(pos.notional) - pos.fundingAccrued;
+    const basePayload = {
+      market:       skinIdToMarket(pos.skinId),
+      exit_price:   exitPrice,
+      entry_price:  pos.entryPrice,
+      realized_pnl: realizedPnl,
+      direction:    pos.side.toUpperCase(),
+      size:         pos.size,
+      leverage:     pos.leverage,
+    };
+
     // Phantom wallet
     if (program && publicKey && isMarketConfigured(pos.skinId)) {
       const sig = await sendClosePosition(program, publicKey, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
-      closePosition(pos.id, pos.markPrice);
+      fireRecordClose({ ...basePayload, wallet: publicKey.toBase58(), close_tx: sig });
+      closePosition(pos.id, exitPrice);
       return;
     }
     // Generated wallet
@@ -92,10 +126,15 @@ export default function OpenPositionsTable() {
       const signer = Keypair.fromSecretKey(decodeBase58(kpRaw));
       const sig = await sendClosePositionKeypair(connection, signer, pos.skinId);
       addToast({ txSig: sig, action: 'close', skinName: pos.skin.name });
-      closePosition(pos.id, pos.markPrice);
+      fireRecordClose({ ...basePayload, wallet: signer.publicKey.toBase58(), close_tx: sig });
+      closePosition(pos.id, exitPrice);
       return;
     }
-    closePosition(pos.id, pos.markPrice);
+    // Simulation — no on-chain tx; only record if we have a wallet address
+    if (walletKey) {
+      fireRecordClose({ ...basePayload, wallet: walletKey, sim: true });
+    }
+    closePosition(pos.id, exitPrice);
   };
 
   return (
