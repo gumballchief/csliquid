@@ -109,8 +109,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     await initDb();
 
-    if (seedOnly && priceParam > 0) {
+    // Always check for stale seed when caller sends the live price.
+    // This ensures the chart reseeds itself if the price drifts >30% from
+    // the seeded baseline (e.g. AK-47 drops from $430 → $223).
+    if (priceParam > 0) {
       await ensureSeed(skinId, priceParam);
+    }
+
+    if (seedOnly) {
       return NextResponse.json({ ok: true });
     }
 

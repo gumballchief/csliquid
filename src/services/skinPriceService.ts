@@ -67,11 +67,12 @@ const mockPrices    = new Map<string, number>();
 const realHistoryCache = new Map<string, { histories: PriceHistories; ts: number }>();
 const HISTORY_CACHE_TTL = 5 * 60_000;
 
-async function fetchRealHistories(skinId: string): Promise<PriceHistories | null> {
+async function fetchRealHistories(skinId: string, currentPrice?: number): Promise<PriceHistories | null> {
   const hit = realHistoryCache.get(skinId);
   if (hit && Date.now() - hit.ts < HISTORY_CACHE_TTL) return hit.histories;
   try {
-    const res = await fetch(`/api/price-history?skinId=${encodeURIComponent(skinId)}`);
+    const priceQ = currentPrice && currentPrice > 0 ? `&price=${currentPrice}` : '';
+    const res = await fetch(`/api/price-history?skinId=${encodeURIComponent(skinId)}${priceQ}`);
     if (!res.ok) return null;
     const data = await res.json() as PriceHistories & { empty?: boolean; error?: string };
     if (data.empty || data.error) return null;
@@ -269,7 +270,7 @@ export async function fetchSkinPrice(skinId: string): Promise<SkinPriceData> {
     const high24h   = Math.max(price, prevPrice) * 1.004;
     const low24h    = Math.min(price, prevPrice) * 0.997;
 
-    const realHistories = await fetchRealHistories(skinId);
+    const realHistories = await fetchRealHistories(skinId, price);
     const result: SkinPriceData = {
       skinId,
       markPrice:    price,
