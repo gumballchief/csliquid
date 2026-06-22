@@ -215,7 +215,7 @@ export default function RewardsPage() {
                   Daily Case Roll
                 </h2>
                 <p style={{ color: MUTED }} className="text-[10px] font-mono mt-0.5">
-                  Trade $100+ collateral · 1 roll per day · 2% chance to win
+                  Open any trade · 1 roll per day · 2% chance to win
                 </p>
               </div>
               <button
@@ -231,7 +231,7 @@ export default function RewardsPage() {
             {showHowTo && (
               <div style={{ background: BG, border: `1px solid ${BORDER}` }} className="rounded p-4 space-y-2.5">
                 {[
-                  ['01', 'Make a trade with $100+ collateral on any market'],
+                  ['01', 'Open at least one trade on any market to unlock rolls'],
                   ['02', 'Tap ROLL CASE — one roll per calendar day'],
                   ['03', '2% chance to win a real CS2 skin (delivered via voucher or USDC equivalent)'],
                   ['04', 'Roll 7 days straight for a STREAK BONUS — 25% win chance on day 7'],
@@ -276,7 +276,7 @@ export default function RewardsPage() {
               {/* Eligibility hint */}
               {wallet && !alreadyRolled && !rolling && !result && (
                 <p style={{ color: DIM }} className="text-[9px] font-mono text-center">
-                  Trade $100+ collateral today to unlock your roll
+                  Open at least one trade to unlock your roll
                 </p>
               )}
             </div>
