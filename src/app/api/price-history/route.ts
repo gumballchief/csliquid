@@ -30,16 +30,20 @@ function buildOHLC(
       c.close = price;
     }
   }
-  // Single-snapshot buckets are doji (open=high=low=close).
-  // Add deterministic ±1.5% spread so candles render with real bodies.
+  // Enforce minimum wick range (1%) and body size (0.4%) on every candle.
+  // Steam prices barely move tick-to-tick, so without this every candle renders
+  // as a flat dash regardless of whether there is one or many snapshots per bucket.
   let seed = 12345;
   const rng = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0x100000000; };
   for (const c of Array.from(map.values())) {
-    if (c.high === c.low) {
-      const spread = c.close * 0.015;
-      c.high = c.close + spread;
-      c.low  = c.close - spread;
-      c.open = c.close + (rng() > 0.5 ? spread * 0.4 : -spread * 0.4);
+    const minWick = c.close * 0.01;
+    const minBody = c.close * 0.004;
+    if (c.high - c.low < minWick) {
+      c.high = c.close + minWick;
+      c.low  = c.close - minWick;
+    }
+    if (Math.abs(c.open - c.close) < minBody) {
+      c.open = c.close + (rng() > 0.5 ? minBody : -minBody);
     }
   }
   return Array.from(map.values()).sort((a, b) => a.time - b.time);
