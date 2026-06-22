@@ -18,7 +18,7 @@ import type { BulkIndexPrices } from '@/app/api/prices/route';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type PriceRange = '1H' | '4H' | '1D' | '1W';
+export type PriceRange = '1m' | '5m' | '15m' | '1h' | '1d';
 export type PriceSource = 'live' | 'cached' | 'mock';
 
 export type PriceHistories = Record<PriceRange, OHLCCandle[]>;
@@ -50,11 +50,11 @@ const STALE_MS     = 8_000;   // aggressive client refresh; server cache shields
 const SNAPSHOT_TTL = 26 * 3_600_000; // keep 26 h of snapshots
 
 const RANGE_CFG: Record<PriceRange, { hours: number; count: number }> = {
-  // interval (hours per candle) × count = total history window
-  '1H': { hours: 1 / 60,   count: 240 },  // 1-min candles  → 4 hours of data
-  '4H': { hours: 5 / 60,   count: 200 },  // 5-min candles  → ~17 hours of data
-  '1D': { hours: 0.5,       count: 200 },  // 30-min candles → 4 days of data
-  '1W': { hours: 4,         count: 210 },  // 4-hr candles   → 5 weeks of data
+  '1m':  { hours: 1 / 60,   count: 60  },  // 1-min candles  → 60 minutes
+  '5m':  { hours: 5 / 60,   count: 60  },  // 5-min candles  → 5 hours
+  '15m': { hours: 15 / 60,  count: 60  },  // 15-min candles → 15 hours
+  '1h':  { hours: 1,        count: 48  },  // 1-hr candles   → 48 hours
+  '1d':  { hours: 24,       count: 30  },  // daily candles  → 30 days
 };
 
 // ── Module-level stores (browser singleton) ────────────────────────────────
@@ -117,8 +117,8 @@ function buildHistories(price: number): PriceHistories {
 function getHistories(skinId: string, price: number): PriceHistories {
   const existing = historyAnchor.get(skinId);
   if (existing) {
-    // Peek at the anchor baseline from the last candle close of the 1H range
-    const h1 = existing['1H'];
+    // Peek at the anchor baseline from the last candle close of the 1m range
+    const h1 = existing['1m'];
     const anchorPrice = h1.length ? h1[Math.floor(h1.length / 2)].close : price;
     if (Math.abs(price - anchorPrice) / anchorPrice < 0.08) return existing;
     // Drift exceeded 8% — rebuild so chart stays centered on current price

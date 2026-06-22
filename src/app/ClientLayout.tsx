@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import AuthGuard from '@/components/auth/AuthGuard';
@@ -26,6 +27,7 @@ const WalletContextProvider = dynamic(
 function AppShell({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, hydrated, user, logout } = useAuth();
   const { connected } = useWallet();
+  const pathname = usePathname();
   const prevConnectedRef = useRef(false);
 
   // Register wallet address in Postgres so all wallets appear in leaderboard.
@@ -51,6 +53,19 @@ function AppShell({ children }: { children: React.ReactNode }) {
       logout();
     }
   }, [connected, user, logout]);
+
+  // Landing page is public — render it immediately without any auth check
+  // so there is no login flash on first load.
+  if (pathname === '/') {
+    return (
+      <PageErrorBoundary>
+        <PriceTicker />
+        <Header />
+        {children}
+        <TxToastContainer />
+      </PageErrorBoundary>
+    );
+  }
 
   // Render nothing until localStorage has been read to avoid flash.
   if (!hydrated) return null;

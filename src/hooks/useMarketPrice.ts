@@ -6,10 +6,11 @@ import { generateCandles } from '@/lib/generateCandles';
 import type { PriceHistories, PriceRange } from '@/services/skinPriceService';
 
 const RANGE_CFG: Record<PriceRange, { hours: number; count: number }> = {
-  '1H': { hours: 1,   count: 72 },
-  '4H': { hours: 4,   count: 90 },
-  '1D': { hours: 24,  count: 60 },
-  '1W': { hours: 168, count: 52 },
+  '1m':  { hours: 1 / 60,   count: 60  },
+  '5m':  { hours: 5 / 60,   count: 60  },
+  '15m': { hours: 15 / 60,  count: 60  },
+  '1h':  { hours: 1,        count: 48  },
+  '1d':  { hours: 24,       count: 30  },
 };
 
 /**

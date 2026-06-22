@@ -7,10 +7,11 @@ import { PriceRange, PriceHistories } from '@/services/skinPriceService';
 type Range = PriceRange;
 
 const RANGES: { id: Range; hours: number; count: number; label: string }[] = [
-  { id: '1H', hours: 1 / 60,  count: 240, label: '1H' },  // 1-min candles, ~4h visible
-  { id: '4H', hours: 5 / 60,  count: 200, label: '4H' },  // 5-min candles, ~16h visible
-  { id: '1D', hours: 0.5,     count: 200, label: '1D' },  // 30-min candles, ~4 days visible
-  { id: '1W', hours: 4,       count: 210, label: '1W' },  // 4-hr candles, ~35 days visible
+  { id: '1m',  hours: 1 / 60,   count: 60,  label: '1m'  },  // 1-min candles,  last 60 min
+  { id: '5m',  hours: 5 / 60,   count: 60,  label: '5m'  },  // 5-min candles,  last 5 h
+  { id: '15m', hours: 15 / 60,  count: 60,  label: '15m' },  // 15-min candles, last 15 h
+  { id: '1h',  hours: 1,        count: 48,  label: '1h'  },  // 1-hr candles,   last 48 h
+  { id: '1d',  hours: 24,       count: 30,  label: '1d'  },  // daily candles,  last 30 d
 ];
 
 export interface ChartPosition {
@@ -39,13 +40,13 @@ export default function PriceChart({ markPrice, skinName, externalHistories, ope
   const entryLineRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const liqLineRef   = useRef<any>(null);
-  const rangeRef     = useRef<Range>('4H');
+  const rangeRef     = useRef<Range>('5m');
   // Ref so the chart-init effect (mount-only) always reads the latest allData
   // without being re-run when allData changes (which would recreate the chart).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allDataRef   = useRef<Record<Range, any[]>>({} as any);
 
-  const [activeRange, setActiveRange] = useState<Range>('4H');
+  const [activeRange, setActiveRange] = useState<Range>('5m');
   const [isReady, setIsReady] = useState(false);
   const [hover, setHover] = useState<{ o: number; h: number; l: number; c: number } | null>(null);
 
@@ -275,16 +276,17 @@ export default function PriceChart({ markPrice, skinName, externalHistories, ope
         </div>
 
         {/* Range tabs */}
-        <div className="flex gap-px bg-tx-border shrink-0 rounded-sm overflow-hidden">
+        <div className="flex gap-1 shrink-0">
           {RANGES.map(r => (
             <button
               key={r.id}
               onClick={() => setActiveRange(r.id)}
-              className={`px-3 py-1.5 text-[11px] font-mono uppercase tracking-[0.05em] transition-colors ${
+              className="px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.05em] rounded-sm transition-all"
+              style={
                 activeRange === r.id
-                  ? 'bg-tx-raised text-tx-green'
-                  : 'bg-tx-surface text-tx-dim hover:text-tx-muted'
-              }`}
+                  ? { background: '#00ff8820', color: '#00ff88', border: '1px solid #00ff8850' }
+                  : { background: 'transparent', color: '#6b7280', border: '1px solid transparent' }
+              }
             >
               {r.label}
             </button>

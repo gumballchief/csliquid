@@ -88,55 +88,84 @@ function MarketIcon({ market }: { market: MarketDefinition }) {
 }
 
 function MarketCard({ market }: { market: MarketDefinition }) {
-  const live = useSkinPrice(market.slug);
+  const live  = useSkinPrice(market.slug);
   const price = live.markPrice > 0 ? live.markPrice : market.approxPrice;
   const pct   = live.changePct24h;
   const up    = pct >= 0;
   const isLive = live.markPrice > 0;
+  const color  = TYPE_COLOR[market.type];
 
   return (
     <Link href={`/trade/${market.slug}`} className="block group focus:outline-none">
-      <article className="bg-tx-surface border border-tx-border rounded hover:border-tx-border2 transition-all duration-150 group-hover:shadow-lg group-hover:shadow-black/20">
-        {/* Header */}
-        <div className="px-3 pt-3 pb-2.5 flex items-start justify-between border-b border-tx-border gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <MarketIcon market={market} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <TypeBadge type={market.type} />
-                {!market.onChain && (
-                  <span className="text-[7px] font-mono text-yellow-500/70 uppercase tracking-wider">DEMO</span>
-                )}
-              </div>
-              <p className="text-[11px] font-mono text-tx-muted truncate leading-tight" title={market.shortName}>
-                {market.shortName}
-              </p>
-            </div>
+      <article
+        className="relative rounded overflow-hidden cursor-pointer"
+        style={{
+          aspectRatio: '3/4',
+          transition: 'transform 0.2s cubic-bezier(0.4,0,0.2,1)',
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+      >
+        {/* Base background */}
+        <div className="absolute inset-0" style={{ background: '#111214' }} />
+
+        {/* Full-bleed skin image */}
+        {market.iconUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/img?url=${encodeURIComponent(market.iconUrl)}`}
+            alt={market.shortName}
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        )}
+
+        {/* Dark gradient overlay — transparent top → near-black bottom */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.25) 45%, rgba(0,0,0,0.85) 100%)',
+          }}
+        />
+
+        {/* Top row: ticker + type badge */}
+        <div className="absolute top-0 left-0 right-0 p-2.5 flex items-center justify-between">
+          <span className="text-[9px] font-mono font-bold text-white uppercase tracking-widest drop-shadow">
+            {market.ticker}
+          </span>
+          <span
+            className="text-[8px] font-mono font-bold uppercase tracking-[0.06em] px-1.5 py-0.5 rounded-sm"
+            style={{
+              color,
+              background: 'rgba(0,0,0,0.55)',
+              border: `1px solid ${color}60`,
+            }}
+          >
+            {TYPE_LABEL[market.type]}
+          </span>
+        </div>
+
+        {/* Bottom: name + price + change */}
+        <div className="absolute bottom-0 left-0 right-0 p-2.5">
+          <p className="text-[8px] font-mono text-white/60 truncate mb-1.5 uppercase tracking-wide">
+            {market.shortName}
+          </p>
+          <div className="flex items-end justify-between gap-1">
+            <p className="text-[16px] font-mono font-bold text-white tabular-nums leading-none">
+              {fmt(price)}
+            </p>
+            {isLive ? (
+              <span
+                className="text-[10px] font-mono font-bold tabular-nums shrink-0"
+                style={{ color: up ? '#4ade80' : '#f87171' }}
+              >
+                {up ? '+' : ''}{pct.toFixed(2)}%
+              </span>
+            ) : (
+              <span className="text-[9px] font-mono text-white/30 shrink-0">—</span>
+            )}
           </div>
-          {isLive ? (
-            <span className={`shrink-0 text-[10px] font-mono font-bold tabular-nums px-1.5 py-0.5 rounded-sm ${
-              up ? 'text-tx-green bg-tx-green/10' : 'text-tx-red bg-tx-red/10'
-            }`}>
-              {up ? '+' : ''}{pct.toFixed(2)}%
-            </span>
-          ) : (
-            <span className="shrink-0 text-[10px] font-mono text-tx-dim tabular-nums px-1.5 py-0.5">—</span>
-          )}
-        </div>
-
-        {/* Price */}
-        <div className="px-3 py-3">
-          <p className="text-[20px] font-mono font-bold text-tx-text tabular-nums leading-none">
-            {fmt(price)}
-          </p>
-          <p className="text-[10px] font-mono text-tx-dim mt-1">
-            {market.ticker} · PERP
-          </p>
-        </div>
-
-        {/* CTA */}
-        <div className="border-t border-tx-border px-3 py-2 text-center text-[10px] font-mono uppercase tracking-[0.08em] text-tx-dim group-hover:text-tx-green transition-colors">
-          {market.onChain ? 'Trade →' : 'View Chart →'}
         </div>
       </article>
     </Link>
@@ -155,7 +184,7 @@ function Section({ type, markets }: { type: MarketType; markets: MarketDefinitio
         <span className="text-[9px] font-mono text-tx-dim">{markets.length} market{markets.length !== 1 ? 's' : ''}</span>
         <div className="flex-1 h-px bg-tx-border" />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
         {markets.map(m => <MarketCard key={m.slug} market={m} />)}
       </div>
     </section>
@@ -300,7 +329,7 @@ export default function TradePage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {filtered.map(m => <MarketCard key={m.slug} market={m} />)}
         </div>
       )}
