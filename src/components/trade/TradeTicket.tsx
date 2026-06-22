@@ -56,6 +56,7 @@ function fireRecordOpen(data: {
 function fireRecordClose(data: {
   wallet: string; market: string; close_tx: string;
   exit_price: number; realized_pnl: number;
+  direction: string; size: number;
 }): void {
   fetch('/api/trades/record-close', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -466,7 +467,7 @@ export default function TradeTicket({ skinId, skin, skinName, markPrice: staticP
         const realizedPnl = existingPos.side === 'long'
           ? (exitPrice - existingPos.entryPrice) * existingPos.size
           : (existingPos.entryPrice - exitPrice) * existingPos.size;
-        fireRecordClose({ wallet: closingWallet, market: skinIdToMarket(skinId), close_tx: closeSig, exit_price: exitPrice, realized_pnl: realizedPnl });
+        fireRecordClose({ wallet: closingWallet, market: skinIdToMarket(skinId), close_tx: closeSig, exit_price: exitPrice, realized_pnl: realizedPnl, direction: existingPos.side.toUpperCase(), size: existingPos.size });
       }
       setExistingPos(null);
       setCloseConfirm(false);

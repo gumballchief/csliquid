@@ -39,7 +39,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     await initDb();
     const body = await req.json();
-    const { wallet, market, close_tx, exit_price, realized_pnl } = body as Record<string, unknown>;
+    const { wallet, market, close_tx, exit_price, realized_pnl, direction, size } = body as Record<string, unknown>;
 
     // ── Required field presence ───────────────────────────────────────────
     if (!wallet || !market || !close_tx) {
@@ -74,12 +74,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Transaction not found on-chain' }, { status: 400 });
     }
 
+    const dir  = direction ? String(direction) : null;
+    const sz   = size     ? Number(size)      : null;
     await db.recordClosePosition(
       String(wallet),
       String(market),
       String(close_tx),
       ep,
       pnl,
+      dir && sz != null ? { direction: dir, size: sz } : undefined,
     );
     return NextResponse.json({ success: true });
   } catch (err) {

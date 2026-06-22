@@ -106,8 +106,9 @@ export const db = {
     close_tx: string,
     exit_price: number,
     realized_pnl: number,
+    fallback?: { direction: string; size: number },
   ): Promise<void> {
-    await sql`
+    const result = await sql`
       UPDATE positions
       SET status       = 'closed',
           close_tx     = ${close_tx},
@@ -118,6 +119,22 @@ export const db = {
         AND market = ${market}
         AND status = 'open'
     `;
+    // If no open record existed (record-open was skipped or failed), insert a
+    // closed-only record so the trade still appears in history.
+    if ((result.rowCount ?? 0) === 0 && fallback) {
+      const dir = fallback.direction.toUpperCase();
+      await sql`
+        INSERT INTO positions
+          (wallet, market, direction, size, collateral, leverage,
+           entry_price, liq_price, notional, fee,
+           status, close_tx, exit_price, realized_pnl, closed_at)
+        VALUES
+          (${wallet}, ${market}, ${dir}, ${fallback.size}, 0, 1,
+           ${exit_price}, 0, ${fallback.size * exit_price}, 0,
+           'closed', ${close_tx}, ${exit_price}, ${realized_pnl}, NOW())
+        ON CONFLICT DO NOTHING
+      `;
+    }
   },
 
   async getOpenPositions(wallet: string): Promise<TradeRecord[]> {
