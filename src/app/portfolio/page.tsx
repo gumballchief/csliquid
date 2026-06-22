@@ -45,10 +45,20 @@ async function awaitRecordClose(data: {
   exit_price: number; entry_price: number; realized_pnl: number;
   direction: string; size: number; leverage: number;
 }): Promise<void> {
-  await fetch('/api/trades/record-close', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  }).catch(() => {});
+  try {
+    const res = await fetch('/api/trades/record-close', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('[record-close] failed:', res.status, err);
+    } else {
+      console.log('[record-close] success for', data.market, data.wallet.slice(0,8));
+    }
+  } catch (e) {
+    console.error('[record-close] network error:', e);
+  }
 }
 
 function fireReferralOnClose(notional: number, fee: number): void {
@@ -173,12 +183,22 @@ export default function PortfolioPage() {
 
   // Close an on-chain position
   const handleCloseOnChain = useCallback(async (pos: OnChainPosition) => {
-    // Prefer live on-chain price; fall back to API fetch; last resort = entryPrice
+    // Prefer live on-chain price; fall back to API; last resort = entryPrice
     let exitPrice = markPrices[pos.priceSkinId] ?? 0;
     if (!exitPrice) {
       try {
-        const r = await fetch(`/api/skin-price?id=${encodeURIComponent(pos.priceSkinId)}`);
-        if (r.ok) exitPrice = ((await r.json()) as { price?: number }).price ?? 0;
+        // Index skins (awp-index etc.) → /api/prices bulk endpoint
+        const indexKey = pos.priceSkinId.replace('-index', '');
+        if (['awp','ak47','knife','glove','cs500'].includes(indexKey)) {
+          const r = await fetch('/api/prices');
+          if (r.ok) {
+            const d = await r.json() as Record<string, number>;
+            exitPrice = d[indexKey] ?? 0;
+          }
+        } else {
+          const r = await fetch(`/api/skin-price?id=${encodeURIComponent(pos.priceSkinId)}`);
+          if (r.ok) exitPrice = ((await r.json()) as { price?: number }).price ?? 0;
+        }
       } catch { /* ignore */ }
     }
     if (!exitPrice) exitPrice = pos.entryPrice;
