@@ -118,12 +118,12 @@ export default function PriceChart({ markPrice, skinName, externalHistories, ope
       });
 
       const series = chart.addSeries(lc.CandlestickSeries, {
-        upColor:         '#00ff88',
-        downColor:       '#ff4444',
-        borderUpColor:   '#00ff88',
-        borderDownColor: '#ff4444',
-        wickUpColor:     '#00ff88',
-        wickDownColor:   '#ff4444',
+        upColor:         '#26a69a',
+        downColor:       '#ef5350',
+        borderUpColor:   '#26a69a',
+        borderDownColor: '#ef5350',
+        wickUpColor:     '#26a69a',
+        wickDownColor:   '#ef5350',
       });
 
       const initialData = allDataRef.current[rangeRef.current] ?? [];
