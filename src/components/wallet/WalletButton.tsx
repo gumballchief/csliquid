@@ -316,13 +316,6 @@ export default function WalletButton() {
       <>
         <div ref={menuRef} className="relative flex items-center gap-2">
           <button
-            onClick={() => setShowSave(true)}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
-            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
-          >
-            SAVE ACCOUNT
-          </button>
-          <button
             onClick={copyCA}
             title={TOKEN_CA}
             className="hidden sm:flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
@@ -414,13 +407,6 @@ export default function WalletButton() {
     return (
       <>
         <div ref={menuRef} className="relative flex items-center gap-2">
-          <button
-            onClick={() => setShowSave(true)}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
-            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
-          >
-            SAVE ACCOUNT
-          </button>
           <button
             onClick={copyCA}
             title={TOKEN_CA}
