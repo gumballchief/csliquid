@@ -231,16 +231,10 @@ export default function WalletButton() {
           <button
             onClick={copyCA}
             title={TOKEN_CA}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
-            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
+            style={TRIGGER_STYLE}
           >
-            {copiedCA ? 'COPIED!' : `$CSLIQ ${CA_SHORT}`}
-            {!copiedCA && (
-              <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="5" y="5" width="8" height="8" rx="1" />
-                <path d="M3 11V3h8" />
-              </svg>
-            )}
+            <span className="tabular-nums">{copiedCA ? 'copied!' : CA_SHORT}</span>
           </button>
           <button
             onClick={() => setOpen(o => !o)}
@@ -331,26 +325,10 @@ export default function WalletButton() {
           <button
             onClick={copyCA}
             title={TOKEN_CA}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
-            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
+            style={TRIGGER_STYLE}
           >
-            {copiedCA ? 'COPIED!' : `$CSLIQ ${CA_SHORT}`}
-            {!copiedCA && (
-              <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="5" y="5" width="8" height="8" rx="1" />
-                <path d="M3 11V3h8" />
-              </svg>
-            )}
-          </button>
-          <button
-            className="hidden sm:flex items-center justify-center w-7 h-7 text-[#6b7280] hover:text-[#e8eaed] transition-colors"
-            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
-            title="Notifications (coming soon)"
-            aria-label="Notifications"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-            </svg>
+            <span className="tabular-nums">{copiedCA ? 'copied!' : CA_SHORT}</span>
           </button>
 
           <button
@@ -446,16 +424,10 @@ export default function WalletButton() {
           <button
             onClick={copyCA}
             title={TOKEN_CA}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
-            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
+            style={TRIGGER_STYLE}
           >
-            {copiedCA ? 'COPIED!' : `$CSLIQ ${CA_SHORT}`}
-            {!copiedCA && (
-              <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <rect x="5" y="5" width="8" height="8" rx="1" />
-                <path d="M3 11V3h8" />
-              </svg>
-            )}
+            <span className="tabular-nums">{copiedCA ? 'copied!' : CA_SHORT}</span>
           </button>
 
           <button
