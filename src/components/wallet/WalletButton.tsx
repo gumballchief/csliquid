@@ -5,12 +5,15 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchUserAccountBalance } from '@/lib/program';
 import ExportKeyModal   from './ExportKeyModal';
 import SaveAccountModal from './SaveAccountModal';
 import SendModal        from './SendModal';
 import SwapModal        from './SwapModal';
 
 const DEVNET_USDC = new PublicKey('Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
+const TOKEN_CA   = '9Lzp4NeR1saD6Cm4Z1ArSHGP4R8n8EGuWpTScrHLpump';
+const CA_SHORT   = `${TOKEN_CA.slice(0, 4)}...${TOKEN_CA.slice(-4)}`;
 
 function truncate(addr: string) {
   return `${addr.slice(0, 4)}…${addr.slice(-4)}`;
@@ -65,10 +68,12 @@ export default function WalletButton() {
   const { connection }  = useConnection();
   const { user, isAuthenticated, loginWithWallet, logout } = useAuth();
 
-  const [open,        setOpen]        = useState(false);
-  const [balance,     setBalance]     = useState<number | null | 'loading'>('loading');
-  const [usdcBalance, setUsdcBalance] = useState<number | null | 'loading'>('loading');
-  const [copied,      setCopied]      = useState(false);
+  const [open,         setOpen]         = useState(false);
+  const [balance,      setBalance]      = useState<number | null | 'loading'>('loading');
+  const [usdcBalance,  setUsdcBalance]  = useState<number | null | 'loading'>('loading');
+  const [vaultBalance, setVaultBalance] = useState<number | null | 'loading'>('loading');
+  const [copied,       setCopied]       = useState(false);
+  const [copiedCA,     setCopiedCA]     = useState(false);
   const [showExport,  setShowExport]  = useState(false);
   const [showSave,    setShowSave]    = useState(false);
   const [showSend,    setShowSend]    = useState(false);
@@ -111,19 +116,18 @@ export default function WalletButton() {
   const fetchBalances = useCallback(async (address: string) => {
     setBalance('loading');
     setUsdcBalance('loading');
+    setVaultBalance('loading');
     const pk = new PublicKey(address);
-    console.log('[WalletButton] fetching balances for', address, 'on', connection.rpcEndpoint);
 
-    const [solResult, tokenResult] = await Promise.allSettled([
+    const [solResult, tokenResult, vaultResult] = await Promise.allSettled([
       connection.getBalance(pk),
       connection.getParsedTokenAccountsByOwner(pk, { mint: DEVNET_USDC }),
+      fetchUserAccountBalance(connection, pk),
     ]);
 
     if (solResult.status === 'fulfilled') {
-      console.log('[WalletButton] SOL lamports:', solResult.value);
       setBalance(solResult.value / LAMPORTS_PER_SOL);
     } else {
-      console.error('[WalletButton] SOL fetch failed:', solResult.reason);
       setBalance(null);
     }
 
@@ -132,11 +136,15 @@ export default function WalletButton() {
       const amt = accts.length > 0
         ? (accts[0].account.data.parsed.info.tokenAmount.uiAmount as number) ?? 0
         : 0;
-      console.log('[WalletButton] USDC balance:', amt);
       setUsdcBalance(amt);
     } else {
-      console.error('[WalletButton] USDC fetch failed:', tokenResult.reason);
       setUsdcBalance(null);
+    }
+
+    if (vaultResult.status === 'fulfilled') {
+      setVaultBalance(vaultResult.value ?? 0);
+    } else {
+      setVaultBalance(null);
     }
   }, [connection]);
 
@@ -181,6 +189,12 @@ export default function WalletButton() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  function copyCA() {
+    navigator.clipboard.writeText(TOKEN_CA);
+    setCopiedCA(true);
+    setTimeout(() => setCopiedCA(false), 1500);
+  }
+
   function handleLogout() {
     loggingOutRef.current = true;
     setOpen(false);
@@ -193,6 +207,7 @@ export default function WalletButton() {
     v === 'loading' ? '…' : v === null ? '—' : v.toFixed(decimals);
   const balanceDisplay = `${solFmt(balance)} SOL`;
   const usdcDisplay    = `${solFmt(usdcBalance, 2)} USDC`;
+  const vaultDisplay   = `${solFmt(vaultBalance, 2)} USDC`;
 
   // ── Before hydration — return same markup as SSR to avoid 418/423/425 ────────
   if (!mounted) {
@@ -212,7 +227,21 @@ export default function WalletButton() {
     const address = publicKey.toBase58();
     return (
       <>
-        <div ref={menuRef} className="relative">
+        <div ref={menuRef} className="relative flex items-center gap-2">
+          <button
+            onClick={copyCA}
+            title={TOKEN_CA}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
+            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+          >
+            {copiedCA ? 'COPIED!' : `$CSLIQ ${CA_SHORT}`}
+            {!copiedCA && (
+              <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="5" y="5" width="8" height="8" rx="1" />
+                <path d="M3 11V3h8" />
+              </svg>
+            )}
+          </button>
           <button
             onClick={() => setOpen(o => !o)}
             className="flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
@@ -247,6 +276,10 @@ export default function WalletButton() {
                 <div className="px-4 py-2 flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">USDC</span>
                   <span className="font-mono text-[11px] text-white tabular-nums">{usdcDisplay}</span>
+                </div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Vault</span>
+                  <span className={`font-mono text-[11px] tabular-nums ${typeof vaultBalance === 'number' && vaultBalance > 0 ? 'text-[#00ff88]' : 'text-white'}`}>{vaultDisplay}</span>
                 </div>
               </div>
 
@@ -296,6 +329,20 @@ export default function WalletButton() {
             SAVE ACCOUNT
           </button>
           <button
+            onClick={copyCA}
+            title={TOKEN_CA}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
+            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+          >
+            {copiedCA ? 'COPIED!' : `$CSLIQ ${CA_SHORT}`}
+            {!copiedCA && (
+              <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="5" y="5" width="8" height="8" rx="1" />
+                <path d="M3 11V3h8" />
+              </svg>
+            )}
+          </button>
+          <button
             className="hidden sm:flex items-center justify-center w-7 h-7 text-[#6b7280] hover:text-[#e8eaed] transition-colors"
             style={{ border: '1px solid #1e2025', borderRadius: 3 }}
             title="Notifications (coming soon)"
@@ -342,6 +389,10 @@ export default function WalletButton() {
                   <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">USDC</span>
                   <span className="font-mono text-[11px] text-white tabular-nums">{usdcDisplay}</span>
                 </div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Vault</span>
+                  <span className={`font-mono text-[11px] tabular-nums ${typeof vaultBalance === 'number' && vaultBalance > 0 ? 'text-[#00ff88]' : 'text-white'}`}>{vaultDisplay}</span>
+                </div>
               </div>
 
               <div>
@@ -381,39 +432,107 @@ export default function WalletButton() {
 
   // ── Email user ──────────────────────────────────────────────────────────────
   if (isAuthenticated && user?.type === 'email') {
+    const { address } = user;
     return (
-      <div ref={menuRef} className="relative">
-        <button
-          onClick={() => setOpen(o => !o)}
-          className="flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
-          style={TRIGGER_STYLE}
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-[#6b7280] shrink-0" />
-          <span className="truncate max-w-[120px]">{user.email}</span>
-          <Chevron open={open} />
-        </button>
+      <>
+        <div ref={menuRef} className="relative flex items-center gap-2">
+          <button
+            onClick={() => setShowSave(true)}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
+            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+          >
+            SAVE ACCOUNT
+          </button>
+          <button
+            onClick={copyCA}
+            title={TOKEN_CA}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors"
+            style={{ border: '1px solid #1e2025', borderRadius: 3 }}
+          >
+            {copiedCA ? 'COPIED!' : `$CSLIQ ${CA_SHORT}`}
+            {!copiedCA && (
+              <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="5" y="5" width="8" height="8" rx="1" />
+                <path d="M3 11V3h8" />
+              </svg>
+            )}
+          </button>
 
-        {open && (
-          <Panel onClose={() => setOpen(false)}>
-            <div className="px-4 py-3 border-b border-[#1e2025]">
-              <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#374151] mb-1">Signed in as</p>
-              <p className="font-mono text-[11px] text-[#e8eaed] break-all">{user.email}</p>
-            </div>
-            <div>
-              <MenuItem onClick={() => { setOpen(false); setVisible(true); }}>Connect Wallet</MenuItem>
-            </div>
-            <div className="border-t border-[#1e2025]">
-              <button
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-3 font-mono text-[12px] uppercase tracking-wider text-[#ff4444] hover:bg-[#1a1d23] transition-colors min-h-[44px]"
-              >
-                → Log Out
-              </button>
-            </div>
-            <div className="md:hidden" style={{ height: 'env(safe-area-inset-bottom, 8px)' }} />
-          </Panel>
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="flex items-center gap-2 px-3 py-1.5 font-mono text-[11px] text-[#e8eaed] hover:border-[#2a2d35] transition-colors"
+            style={TRIGGER_STYLE}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-[#6b7280] shrink-0" />
+            <span className="truncate max-w-[120px]">{user.email}</span>
+            <span className="hidden sm:inline text-[10px] text-[#6b7280] tabular-nums border-l border-[#2a2d35] pl-2">{solFmt(balance, 3)} SOL</span>
+            <Chevron open={open} />
+          </button>
+
+          {open && (
+            <Panel onClose={() => setOpen(false)}>
+              <div className="px-4 py-3 border-b border-[#1e2025]">
+                <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-[#374151] mb-1">Signed in as</p>
+                <p className="font-mono text-[11px] text-[#e8eaed] break-all mb-2">{user.email}</p>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-mono text-[10px] text-[#6b7280] break-all leading-relaxed">{address}</span>
+                  <button
+                    onClick={() => copyToClipboard(address)}
+                    className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-[#6b7280] hover:text-[#e8eaed] transition-colors px-2 py-1 whitespace-nowrap"
+                    style={COPY_BTN_STYLE}
+                  >
+                    {copied ? '✓ OK' : 'COPY'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-b border-[#1e2025]">
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">SOL</span>
+                  <span className="font-mono text-[11px] text-white tabular-nums">{balanceDisplay}</span>
+                </div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">USDC</span>
+                  <span className="font-mono text-[11px] text-white tabular-nums">{usdcDisplay}</span>
+                </div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[#6b7280]">Vault</span>
+                  <span className={`font-mono text-[11px] tabular-nums ${typeof vaultBalance === 'number' && vaultBalance > 0 ? 'text-[#00ff88]' : 'text-white'}`}>{vaultDisplay}</span>
+                </div>
+              </div>
+
+              <div>
+                <MenuItem onClick={() => { setOpen(false); setShowSwap(true); }}>Swap SOL → USDC</MenuItem>
+                <MenuItem onClick={() => { setOpen(false); setShowSend(true); }}>Send / Withdraw</MenuItem>
+                <MenuItem onClick={() => { setOpen(false); setShowExport(true); }}>Export Key</MenuItem>
+                <MenuItem onClick={() => { setOpen(false); setShowSave(true); }}>Save Account</MenuItem>
+              </div>
+
+              <div className="border-t border-[#1e2025]">
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-3 font-mono text-[12px] uppercase tracking-wider text-[#ff4444] hover:bg-[#1a1d23] transition-colors min-h-[44px]"
+                >
+                  → Log Out
+                </button>
+              </div>
+              <div className="md:hidden" style={{ height: 'env(safe-area-inset-bottom, 8px)' }} />
+            </Panel>
+          )}
+        </div>
+
+        {showExport && <ExportKeyModal onClose={() => setShowExport(false)} />}
+        {showSave   && <SaveAccountModal onClose={() => setShowSave(false)} />}
+        {showSend   && <SendModal address={address} onClose={() => setShowSend(false)} />}
+        {showSwap   && (
+          <SwapModal
+            address={address}
+            solBalance={typeof balance === 'number' ? balance : 0}
+            onClose={() => setShowSwap(false)}
+            onSuccess={(newSol, newUsdc) => { setBalance(newSol); setUsdcBalance(newUsdc); }}
+          />
         )}
-      </div>
+      </>
     );
   }
 
