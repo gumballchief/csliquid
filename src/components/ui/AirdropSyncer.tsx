@@ -36,14 +36,14 @@ export default function AirdropSyncer() {
     if (triggered.current.has(signerAddress)) return;
 
     const sessionKey = `airdrop_checked_${signerAddress}`;
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(sessionKey)) return;
 
     triggered.current.add(signerAddress);
     let cancelled = false;
 
     (async () => {
       try {
-        // Check UserAccount PDA existence
+        // Always check vault first — sessionStorage alone is unreliable after
+        // devnet resets where the account is wiped but the flag is still set.
         const balance = await fetchUserAccountBalance(connection, new PublicKey(signerAddress));
         console.log('[AirdropSyncer] userAccountBalance:', balance, 'wallet:', signerAddress);
 
@@ -66,7 +66,9 @@ export default function AirdropSyncer() {
           return;
         }
 
-        console.log('[AirdropSyncer] new user detected — calling /api/airdrop');
+        // Vault is gone — clear any stale sessionStorage flag and re-airdrop.
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(sessionKey);
+        console.log('[AirdropSyncer] no vault account — calling /api/airdrop');
         const res = await fetch('/api/airdrop', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },

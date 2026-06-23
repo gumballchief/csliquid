@@ -105,9 +105,10 @@ export default function PortfolioPage() {
   // (SSR: user=null → isRealWallet=false; client: user.type='generated' → isRealWallet=true)
   const showOnChain = mounted && isRealWallet;
 
-  // Simulation store (pure guests only)
+  // Simulation store (used for guests and as fallback for wallet users on DEMO markets)
   const storePositions = usePositionsStore(s => s.positions);
   const tradeHistory   = usePositionsStore(s => s.tradeHistory);
+  const walletKey      = usePositionsStore(s => s.walletKey);
   const usdcBalance    = usePositionsStore(s => s.usdcBalance);
   const closePosition  = usePositionsStore(s => s.closePosition);
   const resetAccount   = usePositionsStore(s => s.resetAccount);
@@ -322,9 +323,9 @@ export default function PortfolioPage() {
             {t === 'positions' && positionCount > 0 && (
               <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">{positionCount}</span>
             )}
-            {t === 'history' && (showOnChain ? (dbHistory && dbHistory.length > 0) : tradeHistory.length > 0) && (
+            {t === 'history' && (showOnChain ? ((dbHistory && dbHistory.length > 0) || tradeHistory.length > 0) : tradeHistory.length > 0) && (
               <span className="ml-1.5 text-[9px] font-mono bg-tx-raised border border-tx-border px-1.5 py-0.5">
-                {showOnChain ? dbHistory?.length : tradeHistory.length}
+                {showOnChain ? ((dbHistory && dbHistory.length > 0) ? dbHistory.length : tradeHistory.length) : tradeHistory.length}
               </span>
             )}
           </button>
@@ -376,7 +377,23 @@ export default function PortfolioPage() {
                 </thead>
                 <tbody>
                   {storePositions.map(p => (
-                    <SimPositionRow key={p.id} position={p} onClose={() => closePosition(p.id, p.markPrice)} />
+                    <SimPositionRow key={p.id} position={p} onClose={() => {
+                      const closeWallet = signerPubkey?.toBase58() ?? walletKey;
+                      if (closeWallet) {
+                        const grossPnl = p.side === 'long'
+                          ? (p.markPrice - p.entryPrice) * p.size
+                          : (p.entryPrice - p.markPrice) * p.size;
+                        fetch('/api/trades/record-close', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            wallet: closeWallet, market: skinIdToMarket(p.skinId), close_tx: 'sim',
+                            exit_price: p.markPrice, entry_price: p.entryPrice, realized_pnl: grossPnl,
+                            direction: p.side.toUpperCase(), size: p.size, leverage: p.leverage, sim: true,
+                          }),
+                        }).catch(() => {});
+                      }
+                      closePosition(p.id, p.markPrice);
+                    }} />
                   ))}
                 </tbody>
               </table>
@@ -409,6 +426,21 @@ export default function PortfolioPage() {
                 </thead>
                 <tbody>
                   {dbHistory.map(t => <DbHistoryRow key={t.id} trade={t} />)}
+                </tbody>
+              </table>
+            </div>
+          ) : tradeHistory.length > 0 ? (
+            <div className="overflow-x-auto bg-tx-surface border border-tx-border rounded">
+              <table className="w-full text-left min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-tx-border">
+                    {['Market', 'Side', 'Size', 'Entry', 'Exit', 'Realized PnL', 'Fee', 'Funding', 'Lev.', 'Closed'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-[9px] font-mono uppercase tracking-[0.08em] text-tx-dim whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradeHistory.map(t => <HistoryRow key={t.id} trade={t} />)}
                 </tbody>
               </table>
             </div>
