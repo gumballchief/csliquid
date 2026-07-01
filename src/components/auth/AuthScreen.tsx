@@ -59,7 +59,7 @@ export default function AuthScreen() {
           <span style={{ color: '#f97316' }}>CS</span><span style={{ color: '#ffffff' }}>LIQUID</span>
         </div>
         <div style={{ fontFamily: 'monospace', fontSize: '0.625rem', color: MUTED, textTransform: 'uppercase', letterSpacing: '0.12em', marginTop: '0.5rem' }}>
-          CS skin perpetual futures · Solana devnet
+          CS skin perpetual futures · Solana mainnet
         </div>
       </div>
 

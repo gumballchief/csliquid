@@ -702,7 +702,7 @@ function DbHistoryRow({ trade: t }: { trade: TradeRecord }) {
       <td className="px-4 py-3">
         {t.close_tx ? (
           <a
-            href={`https://solscan.io/tx/${t.close_tx}?cluster=devnet`}
+            href={`https://solscan.io/tx/${t.close_tx}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[10px] font-mono text-tx-green/70 hover:text-tx-green transition-colors"

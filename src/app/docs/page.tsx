@@ -222,12 +222,12 @@ export default function DocsPage() {
               CSLIQUID is the first on-chain perpetual futures DEX for CS2 skins. Built on Solana using
               the Anchor framework, it offers markets that let traders go long or short on CS2 skins
               and indexes with up to 20× leverage. Prices are sourced from CSFloat and Skinport market
-              data via an automated aggregator with adaptive EWMA smoothing. Live on Solana Devnet.
+              data via an automated aggregator with adaptive EWMA smoothing. Live on Solana Mainnet.
             </P>
             <Table
               head={['Property', 'Value']}
               rows={[
-                ['Network',      'Solana Devnet'],
+                ['Network',      'Solana Mainnet'],
                 ['Framework',    'Anchor'],
                 ['Max Leverage', '20×'],
                 ['Open Fee',     '0.05% of notional'],
@@ -277,9 +277,9 @@ export default function DocsPage() {
             <H1>Getting Started</H1>
             <OL>
               <li className="leading-relaxed"><strong className="text-tx-text">Install a Solana wallet.</strong> We recommend Phantom or Backpack. Create a new wallet or import an existing one.</li>
-              <li className="leading-relaxed"><strong className="text-tx-text">Switch to Devnet.</strong> In your wallet settings select &ldquo;Devnet&rdquo; as the network. All trades use devnet SOL — no real money.</li>
-              <li className="leading-relaxed"><strong className="text-tx-text">Fund your wallet.</strong> Use the Solana devnet faucet (<Code>solana airdrop 2</Code> via CLI, or the in-app airdrop button) to get devnet SOL for gas fees.</li>
-              <li className="leading-relaxed"><strong className="text-tx-text">Deposit USDC.</strong> CSLIQUID uses a mock USDC token on devnet. Click &ldquo;Mint USDC&rdquo; on the deposit screen to get test collateral.</li>
+              <li className="leading-relaxed"><strong className="text-tx-text">Switch to Mainnet.</strong> In your wallet settings select &ldquo;Mainnet&rdquo; as the network.</li>
+              <li className="leading-relaxed"><strong className="text-tx-text">Fund your wallet.</strong> Transfer SOL to your wallet to cover gas fees.</li>
+              <li className="leading-relaxed"><strong className="text-tx-text">Deposit USDC.</strong> CSLIQUID uses USDC as collateral. Deposit USDC on the deposit screen to fund your account.</li>
               <li className="leading-relaxed"><strong className="text-tx-text">Pick a market.</strong> From the Trade page, select any skin or index market. Review the current mark price and 24h change.</li>
               <li className="leading-relaxed"><strong className="text-tx-text">Open a position.</strong> Choose Long or Short, set your collateral amount and leverage (1× – 20×), review the fee and liquidation price, then click Open Position.</li>
             </OL>
@@ -532,7 +532,7 @@ Share price         = pool_total_usdc / total_lp_tokens`}</Pre>
               head={['Property', 'Value']}
               rows={[
                 ['Program ID', 'TBD — deploying to mainnet soon'],
-                ['Network',    'Solana Devnet'],
+                ['Network',    'Solana Mainnet'],
                 ['Framework',  'Anchor'],
                 ['Frontend',   'csliquid.xyz'],
                 ['Source',     'Coming soon'],
@@ -565,7 +565,7 @@ Share price         = pool_total_usdc / total_lp_tokens`}</Pre>
             <H1>API Reference</H1>
             <P>
               The REST API is served by the oracle aggregator backend. All endpoints return JSON.
-              Base URL: <Code>https://api.csliquid.xyz/v1</Code> (devnet).
+              Base URL: <Code>https://api.csliquid.xyz/v1</Code> (mainnet).
             </P>
             <Table
               head={['Method', 'Endpoint', 'Description']}
@@ -632,9 +632,8 @@ M9-DOPPLER, AK47-WILD-LOTUS, GLOVE-CRIMSON
               without one.
             </FAQItem>
             <FAQItem q="Is this real money?">
-              No. CSLIQUID is currently live on Solana Devnet only. All SOL and USDC used are
-              devnet tokens with no real-world value. Devnet SOL can be obtained for free from
-              public faucets.
+              Yes. CSLIQUID is live on Solana Mainnet. All SOL and USDC used are real
+              mainnet tokens with real-world value. Trade responsibly.
             </FAQItem>
             <FAQItem q="What happens if I close my browser?">
               Your positions are stored entirely on-chain and are not affected by browser state.

@@ -128,7 +128,7 @@ export default function Header() {
           ))}
         </nav>
         <div className="p-4 border-t border-tx-border">
-          <p className="text-[9px] font-mono text-tx-dim uppercase tracking-widest text-center">CSLIQUID · Solana Devnet</p>
+          <p className="text-[9px] font-mono text-tx-dim uppercase tracking-widest text-center">CSLIQUID · Solana Mainnet</p>
         </div>
       </div>
     </>
