@@ -10,8 +10,8 @@ import AuthScreen from '@/components/auth/AuthScreen';
 import Header from '@/components/layout/Header';
 import PriceTicker from '@/components/layout/PriceTicker';
 import TxToastContainer from '@/components/ui/TxToast';
-import AirdropSyncer from '@/components/ui/AirdropSyncer';
 import TosModal from '@/components/TosModal';
+import WelcomeModal from '@/components/WelcomeModal';
 import PageErrorBoundary from '@/components/ui/PageErrorBoundary';
 
 // ssr:false keeps wallet adapter constructors (window.solana etc) out of SSR
@@ -62,6 +62,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (isLanding) {
       return (
         <PageErrorBoundary>
+          <WelcomeModal />
           <PriceTicker />
           <Header />
           {children}
@@ -78,6 +79,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
     if (isLanding) {
       return (
         <PageErrorBoundary>
+          <WelcomeModal />
           <PriceTicker />
           <Header />
           {children}
@@ -92,7 +94,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // This ensures the wallet dropdown / logout button is always accessible.
   return (
     <PageErrorBoundary>
-      <AirdropSyncer />
+      <WelcomeModal />
       <TosModal />
       <PriceTicker />
       <Header />

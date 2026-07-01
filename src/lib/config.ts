@@ -17,10 +17,7 @@ export const NETWORK: 'devnet' | 'mainnet-beta' = 'devnet';
 
 export const COMMITMENT: Commitment = 'confirmed';
 
-export const EXPLORER_BASE =
-  NETWORK === 'devnet'
-    ? 'https://explorer.solana.com/tx/{sig}?cluster=devnet'
-    : 'https://explorer.solana.com/tx/{sig}';
+export const EXPLORER_BASE = 'https://explorer.solana.com/tx/{sig}';
 
 export function explorerTxUrl(sig: string): string {
   return EXPLORER_BASE.replace('{sig}', sig);

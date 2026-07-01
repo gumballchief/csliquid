@@ -123,7 +123,7 @@ export default function TosModal() {
           </TosSection>
 
           <TosSection title="6. Protocol Risk">
-            CSLIQUID is a non-custodial, experimental protocol deployed on Solana devnet.
+            CSLIQUID is a non-custodial, experimental protocol deployed on Solana mainnet.
             Smart contracts may contain bugs. The protocol may be paused, modified, or
             discontinued at any time. There is no guarantee of funds recovery.
           </TosSection>

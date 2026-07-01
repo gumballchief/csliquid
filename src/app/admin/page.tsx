@@ -291,7 +291,7 @@ export default function AdminPage() {
                 Admin
               </span>
               <span className="font-mono text-[8px] uppercase tracking-[0.15em] px-2 py-0.5 bg-tx-raised border border-tx-border text-tx-dim">
-                Devnet
+                Mainnet
               </span>
             </div>
             <h1 className="font-mono text-2xl font-black text-tx-text tracking-tight">
@@ -528,7 +528,7 @@ export default function AdminPage() {
               {ADMIN_ADDRESS.slice(0, 8)}…{ADMIN_ADDRESS.slice(-6)}
             </span>
           </p>
-          <p className="font-mono text-[9px] text-tx-dim">CSLIQUID Admin · Solana Devnet</p>
+          <p className="font-mono text-[9px] text-tx-dim">CSLIQUID Admin · Solana Mainnet</p>
         </div>
 
       </div>

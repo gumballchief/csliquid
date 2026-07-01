@@ -3,7 +3,7 @@
 import { useToastStore, type TxToast, type InfoToast } from '@/store/toastStore';
 
 const SOLSCAN_BASE = 'https://solscan.io/tx/';
-const CLUSTER      = '?cluster=devnet';
+const CLUSTER      = '';
 
 export default function TxToastContainer() {
   const toasts      = useToastStore((s) => s.toasts);
